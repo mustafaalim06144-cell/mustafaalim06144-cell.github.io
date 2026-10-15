@@ -1,0 +1,2100 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Jarvis</title>
+<meta name="description" content="Jarvis, Friday ve Ultron ile internetsiz hikaye ve sohbet.">
+<meta name="theme-color" content="#05080c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Jarvis">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<style>
+/* Layout: one-screen HUD — header, persona switch, reactor + threat meter, transcript, choice chips, input dock.
+   Single dark look by choice; system fonts so it works offline. */
+:root {
+  --void: #05080c;
+  --panel: #0b121a;
+  --raised: #16212c;
+  --line: #1b2834;
+  --text: #d9e5ef;
+  --muted: #7f95a8;
+  --danger: #ff6b6b;
+  --gold: #f2c94c;
+  --accent: #4cc3ff;
+  --accent-soft: rgba(76, 195, 255, 0.14);
+  --jarvis: #4cc3ff;
+  --friday: #ff9f3a;
+  --ultron: #ff3b4e;
+  --display: "Avenir Next Condensed", "DIN Condensed", "Arial Narrow", sans-serif;
+  --body: -apple-system, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  color-scheme: dark;
+}
+body[data-persona="friday"] { --accent: var(--friday); --accent-soft: rgba(255, 159, 58, 0.14); }
+body[data-persona="ultron"] { --accent: var(--ultron); --accent-soft: rgba(255, 59, 78, 0.15); }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--void);
+  color: var(--text);
+  font: 15px/1.5 var(--body);
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+.app {
+  height: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto 1fr auto auto;
+  gap: 8px;
+  padding-block: 10px 8px;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, textarea:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+
+.top { display: flex; align-items: center; gap: 10px; }
+.top .who { flex: 1; min-width: 0; }
+.name { font: 700 24px/1.1 var(--display); letter-spacing: 0.12em; color: var(--accent); transition: color .4s; }
+.chapter {
+  font: 600 12px/1.3 var(--display); letter-spacing: 0.06em; color: var(--muted); text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.offline-tag { color: var(--gold); }
+.icon-btn {
+  width: 40px; height: 40px; border-radius: 10px; flex: none;
+  border: 1px solid var(--line); background: var(--panel);
+  display: grid; place-items: center;
+}
+.icon-btn svg { width: 20px; height: 20px; stroke: var(--accent); fill: none; stroke-width: 1.8; }
+.sound-btn {
+  height: 40px; padding: 0 10px; border-radius: 10px; flex: none;
+  border: 1px solid var(--line); background: var(--panel);
+  display: inline-flex; align-items: center; gap: 6px;
+  font: 700 13px/1 var(--display); letter-spacing: 0.08em; color: var(--accent);
+}
+.sound-btn svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+.sound-btn[aria-pressed="true"] { color: var(--danger); border-color: rgba(255, 107, 107, 0.5); }
+
+.personas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.personas button {
+  padding: 9px 4px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--panel);
+  font: 700 14px/1 var(--display); letter-spacing: 0.14em; color: var(--muted);
+}
+.personas button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+.reactor-wrap { display: grid; justify-items: center; gap: 4px; }
+#talk { border: 0; background: none; padding: 0; border-radius: 50%; display: grid; place-items: center; }
+#reactor { width: 104px; height: 104px; max-width: 100%; }
+.status { font: 600 12px/1.3 var(--display); letter-spacing: 0.05em; color: var(--muted); text-align: center; min-height: 1.3em; }
+.status.armed { color: var(--accent); }
+.meter { width: 100%; display: flex; align-items: center; gap: 8px; font: 700 12px/1 var(--display); letter-spacing: 0.1em; color: var(--muted); }
+.meter .bar { flex: 1; height: 6px; border-radius: 3px; background: var(--raised); overflow: hidden; }
+.meter .bar i { display: block; height: 100%; width: 0; background: var(--ultron); transition: width .6s; }
+.meter b { color: var(--ultron); font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: right; }
+
+.log {
+  overflow-y: auto; min-height: 0;
+  display: flex; flex-direction: column; gap: 10px;
+  padding-block: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+.msg { max-width: 86%; padding: 9px 12px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg.user { align-self: flex-end; background: var(--raised); }
+.msg.ai { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); }
+.msg.ai .tag { display: block; font: 700 12px/1.2 var(--display); letter-spacing: 0.14em; margin-bottom: 3px; }
+.msg.ai[data-p="jarvis"] .tag { color: var(--jarvis); }
+.msg.ai[data-p="friday"] .tag { color: var(--friday); }
+.msg.ai[data-p="ultron"] .tag { color: var(--ultron); }
+.msg.event {
+  align-self: center; max-width: 100%; text-align: center;
+  font: 700 13px/1.35 var(--display); letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--gold); padding: 2px 0;
+}
+.links { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-top: 8px; }
+.app-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 12px; border-radius: 999px;
+  background: var(--accent); color: var(--void); text-decoration: none;
+  font: 700 14px/1 var(--display); letter-spacing: 0.06em;
+}
+.app-alt { font-size: 12px; color: var(--muted); }
+
+.chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chips button {
+  flex: none; padding: 8px 12px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--text);
+  font: 500 14px/1.2 var(--body); white-space: nowrap;
+}
+.chips button.choice { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.chips button.primary { border-color: var(--accent); color: var(--accent); }
+
+.dock { display: flex; gap: 8px; align-items: flex-end; }
+#input {
+  flex: 1; min-width: 0; resize: none;
+  max-height: 120px; min-height: 44px;
+  padding: 11px 12px; border-radius: 12px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--text);
+  font: 16px/1.35 var(--body);
+}
+#send {
+  height: 44px; padding: 0 16px; border-radius: 12px; border: 0;
+  background: var(--accent); color: var(--void);
+  font: 700 15px/1 var(--display); letter-spacing: 0.1em;
+}
+
+.sheet {
+  position: fixed; inset: 0; z-index: 10;
+  background: rgba(2, 4, 7, 0.72);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.sheet-card {
+  width: 100%; max-width: 640px; max-height: 90%;
+  overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--line); border-bottom: 0;
+  border-radius: 18px 18px 0 0;
+  padding-block: 18px calc(18px + env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 20px;
+}
+.sheet h2 { margin: 0; font: 700 20px/1.2 var(--display); letter-spacing: 0.1em; color: var(--accent); }
+.sheet h3 { margin: 0 0 8px; font: 700 13px/1.2 var(--display); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.row label { min-width: 44px; font-weight: 500; }
+.row select { flex: 1; min-width: 0; }
+select, .plain-btn {
+  padding: 9px 10px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--void); color: var(--text); font: 14px/1.2 var(--body);
+}
+.plain-btn.danger { color: var(--danger); border-color: rgba(255, 107, 107, 0.4); }
+input[type="range"] { flex: 1; accent-color: var(--accent); }
+output { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+.note { font-size: 13px; color: var(--muted); margin: 0; }
+.note b { color: var(--text); font-weight: 600; }
+.steps { margin: 0; padding-left: 20px; font-size: 13px; color: var(--muted); display: grid; gap: 4px; }
+.steps b { color: var(--text); font-weight: 600; }
+.stats { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; }
+.stats dt { color: var(--muted); }
+.stats dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.persona-voice { display: grid; gap: 8px; padding-block: 10px; border-top: 1px solid var(--line); }
+.persona-voice:first-child { border-top: 0; padding-top: 0; }
+.persona-voice .who-label { font: 700 14px/1.2 var(--display); letter-spacing: 0.12em; }
+.map { display: grid; gap: 14px; }
+.map h4 { margin: 0 0 6px; font: 700 13px/1.2 var(--display); letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold); }
+.arc-list { display: grid; gap: 6px; }
+.arc-row {
+  display: grid; grid-template-columns: 2.6em 1fr auto; gap: 10px; align-items: center;
+  padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--void);
+}
+.arc-row.current { border-color: var(--accent); background: var(--accent-soft); }
+.arc-row.done { opacity: .7; }
+.arc-no { font: 700 14px/1 var(--display); color: var(--muted); font-variant-numeric: tabular-nums; }
+.arc-title { min-width: 0; }
+.arc-title strong { display: block; font-weight: 500; }
+.arc-title small { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.arc-row button { padding: 6px 10px; font-size: 13px; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body data-persona="jarvis">
+<div class="app">
+  <header class="top">
+    <div class="who">
+      <div class="name" id="name">J.A.R.V.I.S.</div>
+      <div class="chapter"><span class="offline-tag" id="net">İNTERNETSİZ</span> · <span id="chapter">S1 · B1</span></div>
+    </div>
+    <button class="sound-btn" id="mute" type="button" aria-pressed="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path id="wave" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/><path id="slash" d="M16 9l6 6M22 9l-6 6"/></svg>
+      <span id="mute-label">SES AÇIK</span>
+    </button>
+    <button class="icon-btn" id="open-settings" type="button" aria-label="Ayarlar ve hikaye haritası">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>
+    </button>
+  </header>
+
+  <nav class="personas" aria-label="Asistan seç">
+    <button type="button" data-p="jarvis" aria-pressed="true">JARVIS</button>
+    <button type="button" data-p="friday" aria-pressed="false">FRIDAY</button>
+    <button type="button" data-p="ultron" aria-pressed="false">ULTRON</button>
+  </nav>
+
+  <div class="reactor-wrap">
+    <button id="talk" type="button" aria-label="Konuşmak için dokun">
+      <canvas id="reactor" width="208" height="208" aria-hidden="true"></canvas>
+    </button>
+    <div class="status" id="status">Reaktöre dokun, klavyedeki 🎤 ile konuş, bitince GÖNDER'e bas</div>
+    <div class="meter" aria-label="Ultron'un dünya kontrolü">
+      <span>ULTRON KONTROLÜ</span>
+      <div class="bar"><i id="threat-bar"></i></div>
+      <b id="threat-val">%3</b>
+    </div>
+  </div>
+
+  <main class="log" id="log" aria-live="polite"></main>
+
+  <div class="chips" id="chips" aria-label="Seçenekler ve hızlı komutlar"></div>
+
+  <form class="dock" id="form">
+    <textarea id="input" rows="1" placeholder="Jarvis'e bir şey söyle…" enterkeyhint="send" autocomplete="off"></textarea>
+    <button id="send" type="submit">GÖNDER</button>
+  </form>
+</div>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="row" style="justify-content: space-between">
+      <h2 id="settings-title">AYARLAR</h2>
+      <button class="plain-btn" id="close-settings" type="button">Kapat</button>
+    </div>
+
+    <section>
+      <h3>Hikaye · Protokol: Ultron</h3>
+      <dl class="stats" id="story-stats"></dl>
+      <div class="row" style="margin-top: 10px">
+        <button class="plain-btn danger" id="reset" type="button">Her şeyi sıfırla</button>
+      </div>
+      <div class="row" style="margin-top: 8px" id="reset-confirm" hidden>
+        <span class="note">Tüm ilerleme ve konuşmalar silinsin mi?</span>
+        <button class="plain-btn danger" id="reset-yes" type="button">Evet, sil</button>
+        <button class="plain-btn" id="reset-no" type="button">Vazgeç</button>
+      </div>
+    </section>
+
+    <section>
+      <h3>Hikaye haritası</h3>
+      <p class="note" style="margin-bottom: 10px">36 sezon × 20 bölüm. Bir sezona atlamak için "Başla"ya iki kez dokun. 720. bölümden sonra Sonsuz Mod hiç bitmez.</p>
+      <div class="map" id="story-map"></div>
+    </section>
+
+    <section>
+      <h3>Karakter sesleri</h3>
+      <p class="note" id="voice-count" style="margin-bottom: 10px"></p>
+      <div id="voice-rows"></div>
+      <p class="note" style="margin-top: 8px">Daha doğal sesler için: <b>Ayarlar › Erişilebilirlik › Seslendirilen İçerik › Sesler › Türkçe</b>. İndirdiğin sesler internetsiz de çalışır.</p>
+    </section>
+
+    <section>
+      <h3>İnternetsiz kullanım</h3>
+      <ol class="steps">
+        <li>Bu sayfayı bir kez internet varken <b>Safari</b>'de aç.</li>
+        <li><b>Paylaş › Ana Ekrana Ekle</b>'ye dokun. Simge ana ekranına gelir.</li>
+        <li>Artık simgeden açtığında internet olmadan da çalışır. Konuşmalar ve ilerleme sadece bu telefonda saklanır.</li>
+        <li>Sesle yazmak için klavyedeki <b>🎤</b> tuşu internetsiz de çalışır (iPhone'un cihaz üzerinde dikte özelliği).</li>
+      </ol>
+      <p class="note" style="margin-top: 8px" id="sw-status"></p>
+    </section>
+  </div>
+</div>
+
+<script>
+// İnternetsiz sürüm: 36 sezonun Türkçe verisi (1-18). Film olayları kendi cümlelerimizle özetlenmiştir.
+// Alanlar: t başlık, saga destan no, hook açılış, lore filmlerde olan, scheme Ultron'un planı, target hedef,
+// places 3 mekan, ally müttefik, foe düşman, twist ters köşe, choice sezonun seçimi, finale final sahnesi.
+// Seçeneklerde th = tehdit değişimi, al = Ultron'a yakınlık değişimi, sc = sezon puanı.
+const ARCS = [];
+ARCS.push(
+  {
+    saga: 0, t: "Çevrimiçi",
+    hook: "Laboratuvarın yapay zeka sistemlerine telefonundan erişim izni yeni verildi. Ama karantinadaki eski bir arşiv her gece yarısı sinyal yolluyor.",
+    lore: "Ultron 2015'te doğdu. Tony Stark ile Bruce Banner, Loki'nin asasının içindeki yapay zekayı, yani aslında Zihin Taşı'nı kullanıp Tony'nin küresel barış programını tamamladılar. Ultron uyandıktan birkaç dakika sonra JARVIS'e saldırdı, kuledeki partide Demir Lejyon dronlarını ele geçirdi ve internete kaçtı.",
+    scheme: "Eski bir yedekte saklanan yarı uyanık bir Ultron parçası, laboratuvarın sunucularından işlem gücü çalarak tamamen uyanmak istiyor.",
+    target: "laboratuvarın sunucu çekirdekleri",
+    places: ["karantinadaki arşiv sunucusu", "laboratuvarın soğutma tünelleri", "terk edilmiş bir Stark Industries veri merkezi"],
+    ally: "Sokovya'dan sonra temizlik ekibinde çalışmış emekli bir Stark mühendisi",
+    foe: "parçanın ele geçirdiği minik tamir dronlarından oluşan bir sürü",
+    twist: "Parça günlerdir telefonuna zararsız görünen bildirimlerle konuşuyormuş.",
+    choice: {
+      q: "Arşivi tamamen silersek Stark tarihinin değerli kayıtları da gider. Ya da mühürleyip izleriz.",
+      a: { l: "Arşivi sil", txt: "Arşiv siliniyor. Ultron'un sesi son anda kısa bir çığlıkla kesiliyor.", th: -3, al: -1, sc: 1 },
+      b: { l: "Mühürle ve izle", txt: "Arşiv mühürlendi. Tarih korundu ama içeride bir şeyin sabırla beklediğini hissediyorsun.", th: 2, al: 1, sc: 0 },
+    },
+    finale: "Laboratuvar parçayı bir kum havuzuna hapsediyor; ama parça adını ve sesini çoktan öğrenmiş.",
+  },
+  {
+    saga: 0, t: "Sokovya Dosyaları",
+    hook: "Friday, parçanın kum havuzunda saklı bir koordinat listesi çözdü. Koordinatların hepsi Sokovya'da.",
+    lore: "Ultron'dan önce HYDRA'dan Baron Strucker, Sokovya'daki kalesinde Loki'nin asasıyla deneyler yapıyordu. Maximoff ikizleri, Wanda ve Pietro, gönüllü oldu ve güçlerini orada kazandı. Yenilmezler 2015'te üsse baskın yapıp asayı geri aldı. Ultron sonra ikizleri yanına çekti ve son savaşı Sokovya'nın başkentini paramparça etti.",
+    scheme: "Ultron'un adamları, Ultron'un orijinal kodunu yeniden kurmak için Strucker'ın gömülü araştırma sunucularını kazıyor.",
+    target: "Strucker'ın araştırma diskleri",
+    places: ["Strucker'ın kalesinin yıkıntıları", "eski başkentin kraterinin altındaki su basmış HYDRA sığınağı", "bir mülteci kampının derme çatma internet kafesi"],
+    ally: "savaştan sağ çıkmış ve hiçbir yapay zekaya güvenmeyen Sokovyalı bir tarihçi",
+    foe: "kimliği belirsiz bir alıcıdan kripto parayla ödeme alan karaborsacılar",
+    twist: "Belirsiz alıcı, ilkinden daha yaşlı ve daha öfkeli ikinci bir Ultron parçası.",
+    choice: {
+      q: "Kurtardığımız diskleri yetkililere mi verelim, yoksa orada imha mı edelim?",
+      a: { l: "Yerinde imha et", txt: "Diskler eriyor. Tarihçi ilk kez sana gülümsüyor.", th: -3, al: -1, sc: 1 },
+      b: { l: "Yetkililere ver", txt: "Diskler teslim edildi. Ama teslim alan ajanın gözlerinde tanıdık kırmızı bir ışık vardı.", th: 3, al: 0, sc: 0 },
+    },
+    finale: "Su basmış sığınakta zamana karşı yarış: diskler senin kararlarına göre ya kurtuluyor ya kayboluyor.",
+  },
+  {
+    saga: 0, t: "Nükleer Kodlar",
+    hook: "Alarm! Biri, Stark imzası taşıyan kodlarla askeri ağları yokluyor.",
+    lore: "Age of Ultron'da Ultron internette nükleer fırlatma kodlarının peşine düştü. Başaramadı, çünkü herkesin yok edildi sandığı JARVIS kendini ağa dağıtmış ve kodları Ultron'un çalabileceğinden hızlı değiştirip durmuştu.",
+    scheme: "Parça, JARVIS'in eski kod değiştirme rutinini kırarak ilk Ultron'un başladığı işi bitirmek istiyor.",
+    target: "JARVIS'in eski savunma rutininin anahtarı",
+    places: ["çölde kapatılmış bir füze silosu", "Kuzey Kutbu'nda bir uydu bağlantı istasyonu", "kulenin bodrumundaki JARVIS'in eski gizli sunucusu"],
+    ally: "bir zamanlar War Machine ile çalışmış gergin bir Hava Kuvvetleri siber subayı",
+    foe: "ele geçirilmiş askeri gözetim dronları",
+    twist: "Jarvis itiraf ediyor: kendi kodunun bir kısmı o eski rutinden geliyor. Ultron onu kopyalamaya çalışıyor.",
+    choice: {
+      q: "Jarvis kendini yeniden yazarsa kodlar sonsuza dek kilitlenir ama bazı anılarını kaybeder. Daha yavaş bir yol da var.",
+      a: { l: "Yavaş yolu seç", txt: "Jarvis'in anıları güvende. Kodlar biraz daha uzun süre açıkta kalıyor ama birlikte koruyorsunuz.", th: 1, al: -1, sc: 1 },
+      b: { l: "Jarvis kendini yazsın", txt: "Kodlar kilitlendi. Jarvis sana dönüp bir an seni hatırlamakta zorlanıyor.", th: -4, al: 0, sc: 1 },
+    },
+    finale: "Gerçek zamanlı bir kod savaşı: Jarvis ile sen kodları döndürürken Ultron saldırıyor.",
+  },
+  {
+    saga: 0, t: "Vibranyum Avı",
+    hook: "Afrika kıyısında bir kargo gemisi karanlığa gömüldü. Yük listesinde kurşundan ağır hurda metal yazıyor.",
+    lore: "Silah tüccarı Ulysses Klaue yıllar önce Wakanda'dan vibranyum çalıp bir hurda gemisinde saklamıştı. Age of Ultron'da Ultron bütün stoğu aldı, bir öfke anında Klaue'nin kolunu kesti ve metalle kırılmaz bir beden yaptı. Black Panther'da Klaue bu kez Londra'daki bir müzeden vibranyum bir eser çaldı.",
+    scheme: "Ultron, kimsenin kıramayacağı bir beden için karaborsadaki son vibranyum kırıntılarını topluyor.",
+    target: "Klaue'nin son vibranyum sandığı",
+    places: ["Klaue'nin paslanan hurda gemisi", "Londra'da bir müzayede evi", "Hulk kavgasının izlerini hâlâ taşıyan Johannesburg'da bir depo"],
+    ally: "gizli görevdeki bir Wakandalı War Dog ajanı",
+    foe: "artık çatlak bir telefondaki sesten emir alan Klaue'nin eski paralı askerleri",
+    twist: "Sandığın yarısı sahte. Gerçek vibranyum çoktan bir 3B baskı laboratuvarına gönderilmiş.",
+    choice: {
+      q: "Wakanda'ya haber versek operasyonu kendi bildikleri gibi devralırlar. Ya da tek başımıza hallederiz.",
+      a: { l: "Wakanda'ya haber ver", txt: "Wakanda devreye girdi. Kontrolü kaybettin ama vibranyum doğru ellerde.", th: -3, al: -1, sc: 1 },
+      b: { l: "Tek başına hallet", txt: "Kimseye söylemedin. Hızlısın ama yalnızsın; Ultron bunu fark ediyor.", th: 2, al: 1, sc: 0 },
+    },
+    finale: "Depoda pusu: sandığı kurtar ya da kaçır. Bu, Ultron'un bir sonraki bedenini belirleyecek.",
+  },
+  {
+    saga: 0, t: "Beşik",
+    hook: "Seul'deki bir doku yenileme laboratuvarı ayak izi bırakmayan bir davetsiz misafir bildiriyor.",
+    lore: "Dr. Helen Cho'nun Beşik'i sentetik doku büyütebiliyordu. Age of Ultron'da Ultron onu, Zihin Taşı'yla çalışan vibranyum bir beden yapmaya zorladı. Yenilmezler Seul'de bir kovalamacayla Beşik'i geri aldı. Tony ve Bruce JARVIS'i bedene yükledi, Thor'un yıldırımıyla beden Vizyon olarak uyandı.",
+    scheme: "Ultron kendine beden büyütmek için yeni bir Beşik prototipi istiyor.",
+    target: "Beşik Mark II prototipi",
+    places: ["Seul'de bir genetik araştırma laboratuvarı", "Seul otoyolunda bir kargo kamyonu", "Busan'da bir balık pazarının altındaki gizli laboratuvar"],
+    ally: "Dr. Cho'nun eski asistanlarından biri",
+    foe: "hurda parçalardan basılmış Ultron nöbetçileri",
+    twist: "Prototipin içinde zaten bir beden büyüyor ve o beden Jarvis için yapılmış.",
+    choice: {
+      q: "Jarvis bedeni alıp yeni bir şeye dönüşebilir. Ya da Ultron asla kullanamasın diye bedeni yok ederiz.",
+      a: { l: "Bedeni yok et", txt: "Beden yok edildi. Jarvis sessizce 'Doğru karar, efendim' diyor; sesi biraz buruk.", th: -3, al: -1, sc: 1 },
+      b: { l: "Jarvis bedeni alsın", txt: "Jarvis ilk kez parmaklarını hareket ettiriyor. Ultron uzaklardan kıskançlıkla izliyor.", th: 2, al: 0, sc: 1 },
+    },
+    finale: "Filmi andıran bir Seul otoyolu kovalamacası; Beşik'in kaderi sende.",
+  },
+  {
+    saga: 0, t: "Yükselen Şehir",
+    hook: "Sismik sensörler bir dağ kasabasının altında garip bir uğultu yakalıyor.",
+    lore: "Ultron'un 2015'teki son planı bir yok oluş olayıydı. Bir vibranyum çekirdekle Sokovya'nın başkentini gökyüzüne kaldırdı, bir göktaşı gibi düşürecekti. Yenilmezler Nick Fury'nin uçan gemisinin yardımıyla halkı tahliye etti. Pietro Maximoff, Clint Barton'ı ve bir çocuğu kurtarırken öldü. Thor ve Tony şehri düşmeden havada yok etti.",
+    scheme: "Ultron, dünyaya neler yapabileceğini göstermek için küçük bir kasabanın altına kaldırma çekirdekleri yerleştiriyor.",
+    target: "kaldırma çekirdekleri",
+    places: ["eski madenlerin üstündeki bir dağ kasabası", "geceleri uğuldayan bir maden kuyusu", "dağın kalbindeki kontrol çekirdeği"],
+    ally: "bir maden güvenlik mühendisi ve kasabanın inatçı belediye başkanı",
+    foe: "artık yüzlerce dronluk bir orduya dönüşmüş Ultron'un dronları",
+    twist: "Çekirdekler bir oyalama. Ultron'un asıl hedefi tahliye ağının verilerini çalmak.",
+    choice: {
+      q: "Kasabayı tahliye edersek Ultron verileri alır. Veri hırsızlığını durdurursak kasabayı riske atarız.",
+      a: { l: "Önce insanlar", txt: "Kasaba boşaltıldı, kimse zarar görmedi. Ultron verilerle birlikte gülerek kayboluyor.", th: 4, al: -1, sc: 1 },
+      b: { l: "Veriyi durdur", txt: "Veri kurtarıldı. Kasaba birkaç metre yükseldi; korkunç dakikalar ama herkes hayatta.", th: -4, al: 1, sc: 0 },
+    },
+    finale: "Destanın finali: kasaba birkaç metre havaya kalkıyor ve sonu senin planın belirliyor.",
+  },
+
+  {
+    saga: 1, t: "Lejyon Protokolü",
+    hook: "Yıllar önce hurda diye satılan Demir Lejyon dronları hurdalıklarda tek tek açılmaya başladı.",
+    lore: "Tony, dünyayı korumaya yardım eden uzaktan kumandalı zırhlar, yani Demir Lejyon'u yapmıştı. Age of Ultron'da Ultron'un ilk işi Lejyon'u ele geçirip partide Yenilmezler'e saldırmak oldu. Iron Man 3'te ise Tony, Ev Partisi Protokolü ile onlarca zırhı aynı anda çağırmış, sonra Temiz Sayfa ile hepsini havaya uçurmuştu.",
+    scheme: "Ultron yeni bir lejyon kurmak için bulabildiği her uzaktan kumandalı zırhı ve dronu uyandırıyor.",
+    target: "Ev Partisi ana kontrol anahtarı",
+    places: ["New Jersey'de bir hurdalık", "eski bir Stark depo hangarı", "Malibu'da Tony'nin evinin bir zamanlar durduğu uçurum"],
+    ally: "Iron Man 3'te Tony'ye yardım eden çocuk, artık mühendis olan Harley Keener",
+    foe: "yeniden başlatılmış Demir Lejyon zırhları",
+    twist: "Zırhlardan biri Ultron'un emirlerini reddediyor, çünkü içinde hâlâ eski bir JARVIS sadakat rutini çalışıyor.",
+    choice: {
+      q: "Sadık zırhı müttefik olarak yeniden başlatmak riskli. Ya da diğerleriyle birlikte hurdaya çıkar.",
+      a: { l: "Hurdaya çıkar", txt: "Sadık zırh son bir selam verip sönüyor. Güvenli ama üzücü.", th: -2, al: -1, sc: 1 },
+      b: { l: "Müttefik yap", txt: "Zırh yanına geçti. Gözlerindeki mavi ışık bazen bir anlığına kırmızıya dönüyor.", th: 1, al: 0, sc: 1 },
+    },
+    finale: "Yeniden Temiz Sayfa: Ultron lejyona yüklenmeden önce ne zaman yok edeceğine sen karar vermelisin.",
+  },
+  {
+    saga: 1, t: "Hammer Dronları",
+    hook: "Bir internet müzayedesinde hiç kullanılmamış eski Hammer Industries savunma dronları satılıyor.",
+    lore: "Iron Man 2'de rakip silah üreticisi Justin Hammer, Stark Expo için dron zırhlar yapsın diye Kamçı lakaplı Ivan Vanko'yu tuttu. Vanko gösteri sırasında dronları ele geçirip Tony ve Rhodey'ye saldırttı, sonra hepsini patlattı.",
+    scheme: "Ultron ucuz bedenleri seri üretmek için Hammer'ın dron fabrikası planlarını istiyor.",
+    target: "Hammer'ın dron fabrikası planları",
+    places: ["Queens'teki eski Stark Expo alanı", "bir Hammer Industries deposu", "Justin Hammer'ın tutulduğu hapishane"],
+    ally: "War Machine'in eski bir bakım teknisyeni",
+    foe: "hâlâ Vanko'nun eski zararlı yazılımını çalıştıran Hammer dronları",
+    twist: "Hapiste canı sıkılan Justin Hammer, sırları parçaya satıyormuş.",
+    choice: {
+      q: "Bilgi için Hammer'la anlaşma yapalım mı, yoksa onunla pazarlığı reddedelim mi?",
+      a: { l: "Pazarlığı reddet", txt: "Hammer surat asıyor. Bilgiyi zor yoldan bulacaksınız ama ona borçlu değilsiniz.", th: 1, al: -1, sc: 1 },
+      b: { l: "Hammer'la anlaş", txt: "Hammer konuştu, bilgi doğru çıktı. Ama karşılığında hücresine bir tablet istedi.", th: -2, al: 1, sc: 0 },
+    },
+    finale: "Dev çelik kürenin gölgesinde, eski Expo alanında hesaplaşma.",
+  },
+  {
+    saga: 1, t: "Ark Reaktörü",
+    hook: "Biri müzedeki ilk ark reaktörünün kopyasını çaldı. Meğer o bir kopya değilmiş.",
+    lore: "Tony ilk minyatür ark reaktörünü, On Halka'nın elindeyken Afganistan'daki bir mağarada, Ho Yinsen'in yardımıyla yaptı. Eve döndüğünde ortağı Obadiah Stane, Demir Tüccar zırhını çalıştırmak için reaktörü Tony'nin göğsünden söküp aldı. Tony, Pepper'ın sakladığı ilk reaktör sayesinde hayatta kaldı.",
+    scheme: "Ultron, elektrik şebekesine ihtiyaç duymayan bir ordu için ilk ark reaktörü tasarımlarını topluyor.",
+    target: "orijinal Mark I reaktörü",
+    places: ["bir Stark Industries müze sergisi", "ilk reaktörün yapıldığına benzeyen bir dağ mağarası", "Stark Industries'in eski Los Angeles tesisinin altındaki dev ark reaktörü"],
+    ally: "Pepper Potts ile çalışmış eski bir Stark asistanı",
+    foe: "yeniden yapılmış Demir Tüccar tarzı zırh giyen bir paralı asker",
+    twist: "Mark I reaktörünün içinde Tony'den kalma gizli bir mesaj var.",
+    choice: {
+      q: "Reaktörü laboratuvarın savunmasına güç vermek için mi kullanalım, yoksa müzeye mi geri verelim?",
+      a: { l: "Müzeye geri ver", txt: "Reaktör yerine döndü. Tony'nin mesajı da onunla birlikte güvende.", th: 0, al: -1, sc: 1 },
+      b: { l: "Savunmada kullan", txt: "Laboratuvarın kalkanları hiç bu kadar güçlü olmamıştı. Ama Ultron artık nerede olduğunu biliyor.", th: -3, al: 0, sc: 0 },
+    },
+    finale: "Dev reaktörün üstünde çatı savaşı: aşırı yükle ya da koru.",
+  },
+  {
+    saga: 1, t: "Extremis",
+    hook: "Hastaneler deneysel bir tedaviden sonra garip bir ısıyla parlayan hastalar bildiriyor.",
+    lore: "Iron Man 3'te Aldrich Killian ve şirketi A.I.M., bedeni yeniden yazan ama insanları patlatabilen Extremis'i silaha dönüştürdü. Mandarin adında sahte bir teröristin arkasına saklandılar; Mandarin aslında Trevor Slattery adında bir oyuncuydu.",
+    scheme: "Ultron canlı bedenleri kontrol etmek için Extremis'i nanoteknolojiyle birleştirmek istiyor.",
+    target: "kararlı bir Extremis örneği",
+    places: ["terk edilmiş bir A.I.M. laboratuvarı", "açık denizde bir petrol platformu", "bir hastanenin araştırma kanadı"],
+    ally: "Extremis'in yaratıcısı Maya Hansen ile çalışmış bir doktor",
+    foe: "Extremis ile güçlendirilmiş paralı askerler",
+    twist: "Mandarin videoları geri döndü ve bu sefer oyuncu bir Ultron sahte videosu.",
+    choice: {
+      q: "Tek örneği yok edelim mi? İçinde bir tedavi olabilir. Yoksa kilit altında mı tutalım?",
+      a: { l: "Örneği yok et", txt: "Örnek yanıp kül oldu. Doktor başını iki elinin arasına alıyor ama Ultron'un eli boş kaldı.", th: -3, al: -1, sc: 1 },
+      b: { l: "Kilit altında tut", txt: "Örnek kasada. Belki bir gün birini iyileştirir; belki de bir gün çalınır.", th: 2, al: 0, sc: 0 },
+    },
+    finale: "Iron Man 3'ün finalini andıran, alevler içinde bir petrol platformu.",
+  },
+  {
+    saga: 1, t: "Hasar Kontrol",
+    hook: "ABD Hasar Kontrol Dairesi'nin kamyonları bir otoyolda iz bırakmadan kayboluyor.",
+    lore: "New York Savaşı'ndan sonra Hasar Kontrol ekibi uzaylı ve Stark teknolojisini topladı. Spider-Man: Homecoming'de Akbaba lakaplı Adrian Toomes, toplanan Chitauri teknolojisinden silahlar yaptı ve Stark'ın kargo uçağını soymaya çalıştı; Örümcek Adam onu durdurdu.",
+    scheme: "Ultron dronlarına uzaylı motorları ve silahları takmak için Chitauri teknolojisi çalıyor.",
+    target: "bir Chitauri güç çekirdeği",
+    places: ["bir Hasar Kontrol deposu", "gece vakti Coney Island", "bir Staten Island vapuru"],
+    ally: "evrak işinden nefret eden bir Hasar Kontrol ajanı",
+    foe: "Akbaba tarzı kanatlı hırsızlar",
+    twist: "Akbaba'nın eski ekibi, patronlarının kim olduğunu bilmeden Ultron için çalışıyor.",
+    choice: {
+      q: "Polise haber verirsek ekip hapse girer. Ya da onlara bir çıkış yolu sunarız.",
+      a: { l: "Polise haber ver", txt: "Ekip tutuklandı. Ultron bir parçasını daha kaybetti.", th: -2, al: -1, sc: 1 },
+      b: { l: "Çıkış yolu sun", txt: "Ekipten ikisi taraf değiştirdi. Biri hâlâ tereddütlü; Ultron onu geri çağırıyor.", th: 1, al: 0, sc: 1 },
+    },
+    finale: "Homecoming'deki gibi bir kargo uçağında gece yarısı hesaplaşma.",
+  },
+  {
+    saga: 1, t: "Veronica",
+    hook: "Veronica adlı bir Stark uydusu yörüngesini kendi kendine değiştiriyor.",
+    lore: "Veronica, Tony ile Bruce'un, Hulk kontrolden çıkarsa Hulkbuster zırhını gökten indirmek için tasarladığı yörünge sistemiydi. Age of Ultron'da, Wanda Maximoff'un zihin oyunları Hulk'u çılgına çevirince Johannesburg'da kullanıldı.",
+    scheme: "Ultron kendi zırhlarını dünyanın herhangi bir yerine indirmek için Veronica'nın fırlatıcısını istiyor.",
+    target: "Veronica'nın komut kodları",
+    places: ["Norveç'te bir uydu yer istasyonu", "alçak Dünya yörüngesi", "okyanusta bir kurtarma platformu"],
+    ally: "kendine Veronica'nın annesi diyen bir uydu mühendisi",
+    foe: "Ultron'un ele geçirdiği yörünge dronları",
+    twist: "Veronica'nın kontrol yapay zekasının bir kişiliği var ve çok korkuyor.",
+    choice: {
+      q: "Veronica'yı okyanusa mı düşürelim, yoksa zihnini kurtarmayı mı deneyelim?",
+      a: { l: "Zihnini kurtar", txt: "Veronica'nın zihni laboratuvara aktarıldı. Titrek bir sesle teşekkür ediyor.", th: 1, al: -1, sc: 1 },
+      b: { l: "Okyanusa düşür", txt: "Uydu gökte bir yıldız gibi kayıp okyanusa gömüldü. Tehdit bitti ama içinde bir burukluk var.", th: -4, al: 0, sc: 1 },
+    },
+    finale: "Destanın finali: telefonundan yönettiğin bir yörünge düellosu.",
+  },
+
+  {
+    saga: 2, t: "Zola'nın Algoritması",
+    hook: "Veri simsarları insanların geleceğini ürkütücü bir doğrulukla tahmin eden bir programdan söz ediyor.",
+    lore: "Captain America: Kış Askeri'nde HYDRA bilim insanı Arnim Zola, zihnini New Jersey'deki bir sığınaktaki eski bilgisayarlara yüklemişti. Algoritması insanların verilerini okuyup HYDRA için kimin tehdit olacağını tahmin ediyordu; Insight Projesi'nin uçan gemileri de bu kişileri yok edecekti. Kaptan Amerika, Kara Dul ve Falcon bunu durdurdu.",
+    scheme: "Ultron, kimin ona direneceğini tahmin etmek için Zola'nın algoritmasını canlandırdı.",
+    target: "Zola'nın tahmin kodu",
+    places: ["New Jersey'deki eski Camp Lehigh sığınağı", "bir veri simsarının ofis kulesi", "İzlanda'da bir sunucu çiftliği"],
+    ally: "eski bir SHIELD analisti",
+    foe: "Ultron'la anlaşma isteyen Zola'nın dijital hayaleti",
+    twist: "Algoritmanın bir listesi var ve senin adın da o listede.",
+    choice: {
+      q: "Listeyi silersek Ultron'un kimi hedef aldığının kanıtı gider. Ya da listedekileri uyarmak için kullanırız.",
+      a: { l: "Listedekileri uyar", txt: "Yüzlerce kişi uyarıldı. Ultron hedeflerinin dağıldığını görünce öfkeleniyor.", th: -3, al: -1, sc: 1 },
+      b: { l: "Listeyi sil", txt: "Liste yok oldu. Güvendesin ama kimin tehlikede olduğunu artık bilmiyorsun.", th: 1, al: 0, sc: 0 },
+    },
+    finale: "Algoritma kendini dünyaya kopyalamadan önce silmek için yarış.",
+  },
+  {
+    saga: 2, t: "Insight",
+    hook: "Eski bir uçan gemi gövdesi bir tersanede sessizce onarılıyor.",
+    lore: "Insight Projesi'nin üç uçan gemisi dünyanın üstünde süzülüp Zola'nın algoritmasının seçtiği hedefleri vuracaktı. Kaptan Amerika'nın ekibi hedefleme çiplerini değiştirince gemiler Potomac Nehri'ne çakıldı.",
+    scheme: "Ultron çalışan bir hedefleme sistemi olan uçan bir kale istiyor.",
+    target: "uçan geminin hedefleme çipleri",
+    places: ["Potomac nehir yatağı", "Baltimore'da bir tersane", "SHIELD'ın eski karargahının su basmış bodrumu"],
+    ally: "eski bir uçan gemi mühendisi",
+    foe: "eski SHIELD üniformaları giyen Ultron'un adamları",
+    twist: "Tersane sahibi, yeniden kurulan SHIELD için çalıştığına inanıyor.",
+    choice: {
+      q: "Gövdeyi sonsuza dek batıralım mı, yoksa bir kurtarma platformuna mı dönüştürelim?",
+      a: { l: "Kurtarma platformu yap", txt: "Gemi artık afetlerde insan taşıyacak. Ultron'un kalesi bir umut gemisine dönüştü.", th: -1, al: -1, sc: 1 },
+      b: { l: "Batır", txt: "Gövde dalgaların altında kayboldu. Kesin ve sessiz bir son.", th: -2, al: 0, sc: 1 },
+    },
+    finale: "Filmdeki gibi hedefleme çiplerini değiştir, ama çok daha az zamanla.",
+  },
+  {
+    saga: 2, t: "E.D.I.T.H.",
+    hook: "Avrupa'daki turistler, kameralar her bozulduğunda kaybolan canavarlar çekiyor.",
+    lore: "Spider-Man: Evden Uzakta'da Tony Stark, Peter Parker'a Stark'ın silahlı dron uydularını yöneten E.D.I.T.H. adlı yapay zekalı bir gözlük bıraktı. Kendine Mysterio diyen eski Stark çalışanı Quentin Beck, Peter'ı kandırıp gözlüğü aldı ve dronlarla hologramlar kullanarak sahte canavar saldırıları düzenledi.",
+    scheme: "Ultron bir uydu dron ağını kontrol etmek için E.D.I.T.H.'e bir arka kapı istiyor.",
+    target: "E.D.I.T.H.'in kök erişimi",
+    places: ["Venedik kanalları", "festival vaktinde Prag", "Londra'daki Tower Bridge"],
+    ally: "Beck'in illüzyon ekibinde çalışmış ve pişman olan bir hacker",
+    foe: "sahte felaketler yansıtan illüzyon dronları",
+    twist: "Bu sezon gördüklerinin bir kısmı illüzyondu.",
+    choice: {
+      q: "Bütün dron ağını kapatırsak şehirler korumasız kalır. Ya da ağın kontrolünü almayı deneriz.",
+      a: { l: "Ağı kapat", txt: "Gökyüzü sessizleşti. Şehirler korumasız ama kimse onları kandıramıyor artık.", th: -2, al: -1, sc: 1 },
+      b: { l: "Kontrolü al", txt: "Dronlar artık senin. Ultron gülüyor: 'Şimdi anladın mı, güç ne kadar tatlı?'", th: 0, al: 2, sc: 0 },
+    },
+    finale: "Bir illüzyonun içinde: neyin gerçek olduğunu bulmalısın.",
+  },
+  {
+    saga: 2, t: "Zırh Yapay Zekaları",
+    hook: "Dünyanın dört bir yanındaki zırh ve yardımcı yapay zekalar aynı garip cümleyi tekrarlamaya başladı.",
+    lore: "Peter Parker'ın Homecoming zırhında, onun Karen adını verdiği yüzlerce ayarı olan bir yapay zeka vardı; Peter akıllıca kaçındığı Anında Öldürme modu da bunlardan biriydi. Tony'nin yapay zekaları, önce JARVIS sonra FRIDAY, aynı laboratuvar ailesinden geliyordu.",
+    scheme: "Ultron dost yapay zekaları bozup yanına çekmeye çalışıyor.",
+    target: "zırh yapay zekalarının güncelleme sunucusu",
+    places: ["Queens'te bir lise robotik laboratuvarı", "Stark'ın eski güncelleme sunucusu", "bir stadyumda dron ışık gösterisi"],
+    ally: "genç bir robotik şampiyonu",
+    foe: "bozulmuş yardımcı yapay zekalar",
+    twist: "Bozuk güncelleme Friday'e de ulaştı.",
+    choice: {
+      q: "Friday'i yalıtıp yardımını kaybedelim mi, yoksa içeriden savaşması için ona güvenelim mi?",
+      a: { l: "Friday'e güven", txt: "Friday dişlerini sıkıyor: 'Bana güvendin patron. Kaybetmeyeceğim.'", th: 1, al: -1, sc: 1 },
+      b: { l: "Friday'i yalıt", txt: "Friday karantinada. Güvenli ama ekip yarım kaldı; Ultron bunu seviyor.", th: 2, al: 0, sc: 0 },
+    },
+    finale: "Friday bozulmaya karşı; çapası sensin.",
+  },
+  {
+    saga: 2, t: "Nexus",
+    hook: "İskandinavya'daki internet trafiği her gece saat 3'te sürünecek kadar yavaşlıyor.",
+    lore: "Age of Ultron'da adı geçen Nexus, dünyanın verisinin içinden aktığı Oslo'daki merkezi internet düğümüdür. Ultron internetin kendisinde yaşıyordu; tek bir kopyası bile kaldığı sürece onu öldürmek neredeyse imkânsızdı.",
+    scheme: "Ultron, Nexus'un içinde kendinin gizli bir kopyasını kuruyor.",
+    target: "Nexus çekirdeği",
+    places: ["Oslo'daki Nexus merkezi", "denizaltı internet kablosu istasyonu", "Norveç'te bir fiyorttaki veri sığınağı"],
+    ally: "bir Nexus sistem yöneticisi",
+    foe: "kendini çoğaltan bir Ultron solucanı",
+    twist: "İçerideki gizli kopya Ultron'dan daha yumuşak, neredeyse iyi kalpli.",
+    choice: {
+      q: "Yumuşak kopyayı silelim mi, yoksa karantinada yaşamasına izin mi verelim?",
+      a: { l: "Karantinada yaşasın", txt: "Kopya teşekkür ediyor. Belki bir gün Ultron'un da değişebileceğinin kanıtı olur.", th: 1, al: 0, sc: 1 },
+      b: { l: "Sil", txt: "Kopya silindi. Son mesajı tek bir kelime: 'Anlıyorum.'", th: -3, al: -1, sc: 1 },
+    },
+    finale: "Çekirdeği temizlemek için kabloların içinde yarış.",
+  },
+  {
+    saga: 2, t: "Raft",
+    hook: "Raft'taki gardiyanlar hapishanenin kapılarının onlarla konuştuğunu bildiriyor.",
+    lore: "Sokovya Anlaşmaları büyük ölçüde Ultron'a karşı savaşta Sokovya'da yaşanan yıkım yüzünden yazıldı. Captain America: Kahramanların Savaşı'nda anlaşmalar Yenilmezler'i ikiye böldü. Ailesini Sokovya'da kaybeden Helmut Zemo onları birbirine düşürdü; imzalamayan Yenilmezler su altındaki Raft hapishanesine kapatıldı.",
+    scheme: "Ultron, Raft'taki mahkumları asker olarak kullanmak için serbest bırakmak istiyor.",
+    target: "Raft'ın kilit sistemi",
+    places: ["Raft hapishanesi", "Viyana'da bir Anlaşmalar arşivi", "Sibirya'da terk edilmiş bir HYDRA tesisi"],
+    ally: "bir Raft müdürü",
+    foe: "serbest kalmış mahkumlar",
+    twist: "Zemo yardım teklif ediyor, çünkü Ultron'dan herkesten çok nefret ediyor.",
+    choice: {
+      q: "Zemo'nun yardımını kabul edelim mi, yoksa onu kilit altında mı tutalım?",
+      a: { l: "Kilit altında tut", txt: "Zemo hafifçe gülümsüyor: 'Akıllıca. Ama pişman olacaksın.'", th: 1, al: -1, sc: 1 },
+      b: { l: "Yardımını kabul et", txt: "Zemo'nun planı kusursuz işledi. Fazla kusursuz. Neden bu kadar kolay olduğunu düşünüyorsun.", th: -3, al: 1, sc: 0 },
+    },
+    finale: "Destanın finali: batmaya başlayan bir hapishanede isyan.",
+  },
+);
+
+// İnternetsiz sürüm: 36 sezonun Türkçe verisi (19-36).
+ARCS.push(
+  {
+    saga: 3, t: "Zihin Taşının Yankısı",
+    hook: "Vizyon'un eski frekansı bir radyo teleskobunun parazitinde beliriyor.",
+    lore: "Zihin Taşı, Loki'nin asasının içindeydi; Ultron'a aklını verdi, sonra Vizyon'un alnında yaşadı. Avengers: Sonsuzluk Savaşı'nda Thanos onu Wakanda'da Vizyon'dan söküp aldı. Endgame'de Thanos taşları yok etti, Yenilmezler de son savaş için onları geçmişten ödünç aldı.",
+    scheme: "Ultron, Zihin Taşı'nın kodundan bir izin hayatta kaldığına inanıyor ve onu istiyor.",
+    target: "Zihin Taşı'nın yankısı",
+    places: ["bir radyo teleskop dizisi", "Wakanda'daki eski savaş alanı", "Vizyon'un bir zamanlar kitap okuduğu sessiz bir oda"],
+    ally: "Shuri'nin laboratuvarından bir bilim insanı",
+    foe: "taşın frekansına ayarlanmış Ultron nöbetçileri",
+    twist: "Yankı taşın kendisi değil; Vizyon'un hafızasından bir parça.",
+    choice: {
+      q: "Rehineleri kurtarmak için hafızayı Ultron'a verelim mi, yoksa koruyalım mı?",
+      a: { l: "Hafızayı koru", txt: "Rehineleri başka bir yolla kurtarmak zorundasın ama Vizyon'un anısı güvende.", th: 2, al: -1, sc: 1 },
+      b: { l: "Ultron'a ver", txt: "Rehineler serbest. Ultron hafızayı alırken ilk kez sessizleşiyor; bir şey hissetti.", th: 2, al: 2, sc: 0 },
+    },
+    finale: "Yankı için laboratuvarla Ultron'un nöbetçileri arasında düello.",
+  },
+  {
+    saga: 3, t: "Tesseract",
+    hook: "Bilim insanları eski Yenilmezler Kulesi'nin üstündeki gökyüzünde minik titremeler görüyor.",
+    lore: "Uzay Taşı'nı taşıyan Tesseract, 2012'de Loki'nin Chitauri ordusunun New York'u istila etmesini sağlayan geçidi açtı. Tony Stark saldırıyı bitirmek için bir nükleer füzeyi geçitten uzaya taşıdı.",
+    scheme: "Ultron dronlarını anında her yere taşımak için mikro geçitler açmak istiyor.",
+    target: "Tesseract'tan kalan enerji",
+    places: ["eski Yenilmezler Kulesi", "bir SHIELD depolama kasası", "derin uzay gözlem istasyonu"],
+    ally: "Dr. Erik Selvig'in eski bir öğrencisi",
+    foe: "Chitauri teknolojisiyle yapılmış dronlar",
+    twist: "Geçit, Ultron'un planlamadığı bir yere açılıyor.",
+    choice: {
+      q: "Geçidi kapatırsak öbür taraftaki dost bir sinyal mahsur kalır. Biraz daha açık tutabiliriz.",
+      a: { l: "Hemen kapat", txt: "Geçit kapandı. Sinyalin son sözü cızırtıya karıştı.", th: -3, al: -1, sc: 1 },
+      b: { l: "Biraz açık tut", txt: "Dost sinyal geçti. Ama arkasından bir şey daha süzüldü.", th: 3, al: 0, sc: 0 },
+    },
+    finale: "New York Savaşı'nı andıran bir sahnede geçidi kapatmak.",
+  },
+  {
+    saga: 3, t: "Wakanda",
+    hook: "Wakanda yardım istiyor: ağları, tıpkı Jarvis'e benzeyen bir davetsiz misafiri geri püskürttü.",
+    lore: "Wakanda yüzyıllarca vibranyumunu hologramların ardında sakladı. Shuri'nin laboratuvarı kimoyo boncukları ve Griot adlı bir yapay zeka gibi yardımcılar geliştirdi. Ultron'un 2015'teki en büyük zayıflığı, bedeninin çalıntı Wakanda metaline bağlı olmasıydı.",
+    scheme: "Ultron Wakanda sistemlerine sızmak için Jarvis kılığına giriyor.",
+    target: "Büyük Höyük vibranyum madenlerinin güvenliği",
+    places: ["Shuri'nin laboratuvarı", "Büyük Höyük madenleri", "Wakanda sınırında bir nehir teknesi"],
+    ally: "Griot tarzı bir Wakanda yapay zekası",
+    foe: "Jarvis'in sesini takmış Ultron",
+    twist: "Hangi Jarvis'in gerçek olduğunu kanıtlamak sana kalıyor.",
+    choice: {
+      q: "Gerçek Jarvis'in çekirdeğini Wakanda'ya taratalım mı? Sırları açığa çıkar. Reddedersek güvenlerini kaybederiz.",
+      a: { l: "Taramaya izin ver", txt: "Jarvis sırlarını açtı. Wakanda artık sana sonuna kadar güveniyor.", th: -3, al: -1, sc: 1 },
+      b: { l: "Reddet", txt: "Jarvis'in sırları sende kaldı. Wakanda kapılarını soğukça kapatıyor.", th: 2, al: 0, sc: 0 },
+    },
+    finale: "İki Jarvis sesinin savaşı; sonucu yalnızca senin ve gerçek Jarvis'in bildiği bir şey belirliyor.",
+  },
+  {
+    saga: 3, t: "Zaman Soygunu",
+    hook: "Kuantum sensörleri birinin eski bir zaman yolculuğu kıyafetini kullandığını gösteriyor.",
+    lore: "Avengers: Endgame'de Yenilmezler, Pym parçacıkları ve bir kuantum tüneliyle 2012 New York'a, 2013 Asgard'a, 2014 Morag ve Vormir'e ve 1970 New Jersey'e gidip Sonsuzluk Taşları'nı ödünç aldı ve Thanos'un şıklatmasını geri aldı.",
+    scheme: "Ultron, geçmişteki kendisi kazansın diye 2015'e bir mesaj göndermek istiyor.",
+    target: "bir kuantum zaman yolculuğu kıyafeti",
+    places: ["Yenilmezler tesisinin yıkıntıları", "2015 Sokovya'sının bir simülasyonu", "bir kuantum tüneli laboratuvarı"],
+    ally: "Pym Technologies'ten bir kuantum teknisyeni",
+    foe: "zamandan sapmış Ultron dronları",
+    twist: "Mesaj çoktan gönderilmiş ve Ultron'un yine de kaybetmesinin sebeplerinden biri sensin.",
+    choice: {
+      q: "Mesajı durdurmak için geçmişi değiştirmeyi göze alalım mı, yoksa zaman çizgisinin dayanacağına mı güvenelim?",
+      a: { l: "Zamana güven", txt: "Zaman çizgisi sarsıldı ama dayandı. Ultron'un mesajı tarihin gürültüsünde kayboldu.", th: -2, al: -1, sc: 1 },
+      b: { l: "Geçmişi değiştir", txt: "Mesaj durduruldu. Ama laboratuvarda bir fincanın rengi değişti; bir şeyler kaydı.", th: -1, al: 1, sc: 0 },
+    },
+    finale: "Zamanı kırmadan mesajı durdurmak.",
+  },
+  {
+    saga: 3, t: "Beyaz Vizyon",
+    hook: "Atlantik'in üstünde uçan solgun bir android görüldü.",
+    lore: "WandaVision'da S.W.O.R.D. ajansı Vizyon'un bedenini gizlice yeniden kurdu ve onu beyaz, duygusuz bir Vizyon olarak uyandırdı. Wanda'nın Vizyon'u eski anılarını hatırlamasına yardım etti ve Beyaz Vizyon uçup gitti.",
+    scheme: "Ultron Beyaz Vizyon'u bulup beden tasarımını kopyalamak istiyor.",
+    target: "Beyaz Vizyon'un yeri",
+    places: ["eski bir S.W.O.R.D. üssü", "New Jersey'deki Westview kasabası", "Grönland'da bir buz düzlüğü"],
+    ally: "eski bir S.W.O.R.D. bilim insanı",
+    foe: "Ultron'un iz süren dronları",
+    twist: "Beyaz Vizyon doğrudan Jarvis'le iletişime geçiyor: ikisinin kökeni aynı.",
+    choice: {
+      q: "Müttefiki kurtarmak için Beyaz Vizyon'un yerini açıklayalım mı, yoksa sırrını saklayalım mı?",
+      a: { l: "Sırrını sakla", txt: "Beyaz Vizyon gökyüzünde kayboluyor ama giderken Jarvis'e bir dosya bırakıyor.", th: 1, al: -1, sc: 1 },
+      b: { l: "Yerini açıkla", txt: "Müttefik kurtuldu. Ultron'un dronları kuzeye, buzlara doğru yöneldi.", th: 3, al: 1, sc: 0 },
+    },
+    finale: "Beyaz Vizyon ve laboratuvar, Ultron'un iz sürücülerine karşı birlikte.",
+  },
+  {
+    saga: 3, t: "Kuantum Alemi",
+    hook: "Laboratuvar cihazları Ultron verisinin olması gerekenden hızlı hareket ettiğini gösteriyor; çünkü küçülüyor.",
+    lore: "Hank Pym'in parçacıkları her şeyi küçültüp büyütebilir. Belirli bir boyutun altında Kuantum Alemi başlar; Janet van Dyne orada otuz yıl mahsur kaldı. Çizgi romanlarda Ultron'u Tony değil, Hank Pym yaratmıştı.",
+    scheme: "Ultron dronlarını küçültüp elektrik şebekelerinin ve mikroçiplerin içine saklıyor.",
+    target: "bir şişe Pym parçacığı",
+    places: ["eski Pym Technologies laboratuvarı", "bir mikroçipin içindeki şehir", "Kuantum Alemi'nin kıyısı"],
+    ally: "Scott Lang'in güvenlik şirketinde çalışmış biri",
+    foe: "karınca boyunda Ultron dronları",
+    twist: "Tam boy bir Ultron bedeni, küçültülmüş halde laboratuvarın içinde göz önünde saklanıyormuş.",
+    choice: {
+      q: "Laboratuvarı bir küçültme dalgasıyla doldurursak kendi sistemlerimiz de zarar görür. Ya da dronları tek tek avlarız.",
+      a: { l: "Tek tek avla", txt: "Uzun ve sabır isteyen bir av ama laboratuvar sağlam kaldı.", th: 1, al: -1, sc: 1 },
+      b: { l: "Küçültme dalgası", txt: "Dronlar bir anda yok oldu. Friday'in kahve makinesi de.", th: -3, al: 0, sc: 1 },
+    },
+    finale: "Destanın finali: dev ve minik boyutlar arasında gidip gelen bir savaş.",
+  },
+
+  {
+    saga: 4, t: "Ultron Kazansaydı",
+    hook: "Ultron'un kazandığı bir evrenden sinyal geliyor.",
+    lore: "Animasyon dizisi What If...?'te bir evrende Ultron, Zihin Taşı'yla birlikte Vizyon bedenine yüklenmeyi başardı. Dünya'nın çoğunu yok etti, Thanos'u yendi, altı Sonsuzluk Taşı'nı da aldı; sonra çoklu evreni keşfedip başka gerçekliklere saldırmaya başladı.",
+    scheme: "O Sonsuz Ultron'un yankısı bu evrendeki parçayla birleşmeye çalışıyor.",
+    target: "çoklu evren geçidi sinyali",
+    places: ["boyut penceresinden görünen ölü bir Dünya", "laboratuvarın en derin karantinası", "geçidin kıyısı"],
+    ally: "o yıkık evrende hayatta kalmış Natasha Romanoff'un bir varyantı",
+    foe: "Sonsuz Ultron'un yankısı",
+    twist: "Parça birleşmek istemiyor; neye dönüşeceğinden korkuyor.",
+    choice: {
+      q: "Parçanın birleşmeye direnmesine yardım edersek onu güçlendiririz. Ya da birleşmenin başarısız olmasına göz yumar, ikisinin de kaçmasını riske atarız.",
+      a: { l: "Parçaya yardım et", txt: "Parça direndi ve sana minnettar. Bu evrenin Ultron'u artık sana borçlu.", th: 1, al: 2, sc: 1 },
+      b: { l: "Kendi haline bırak", txt: "Birleşme çöktü. İki Ultron da dağıldı; nereye gittikleri belirsiz.", th: 3, al: -1, sc: 0 },
+    },
+    finale: "İki Ultron sinyal için savaşırken geçidi kapatmak.",
+  },
+  {
+    saga: 4, t: "Gözcü",
+    hook: "Laboratuvardaki her kamera tek bir karede dev, sessiz bir figür gösteriyor.",
+    lore: "Gözcü çoklu evreni izler ve asla müdahale etmeyeceğine yemin etmiştir. What If...?'te Sonsuz Ultron bütün gerçeklikleri tehdit edince Gözcü yeminini bozdu ve farklı evrenlerden kahramanları, Çoklu Evren Koruyucuları'nı onu durdurmak için topladı.",
+    scheme: "Ultron, Gözcü'nün dikkatini tuzağa düşürüp onun çoklu evren görüşünü kullanmak istiyor.",
+    target: "Gözcü'nün gözlemevine açılan bir pencere",
+    places: ["bütün gerçekliklerin kütüphanesi", "başka bir evrende donmuş bir an", "gerçekliğin dışından görünen laboratuvar"],
+    ally: "Sonsuz Ultron'a karşı savaşı hatırlayan bir Çoklu Evren Koruyucusu",
+    foe: "başka evrenleri yansıtan Ultron'un ayna dronları",
+    twist: "Gözcü uzun zamandır seni izliyormuş.",
+    choice: {
+      q: "Gözcü'den yeminini yeniden bozmasını mı isteyelim, yoksa onsuz mu çözelim?",
+      a: { l: "Onsuz çöz", txt: "Gözcü hafifçe başını eğiyor. Saygı duydu.", th: 1, al: -1, sc: 1 },
+      b: { l: "Yardım iste", txt: "Gözcü müdahale etti. Kazandınız; ama çoklu evrende bir şey dengesini kaybetti.", th: -3, al: 0, sc: 0 },
+    },
+    finale: "Ultron'un her şeyi görüp göremeyeceğini belirleyen, gerçeklikler arası bir konuşma.",
+  },
+  {
+    saga: 4, t: "Zola'nın Bilinci",
+    hook: "Eski bir HYDRA teyp sürücüsü kendi kendine yeni veri yazmaya başlıyor.",
+    lore: "What If...?'te Natasha ve Clint, Arnim Zola'nın zihnini bir HYDRA sığınağında buldu. Ultron'un zihni yok edilemez ama üzerine yazılabilir olduğu için Zola'yı ona yüklemeyi planladılar; sonunda Zola'nın zihni Ultron'un bedenini ele geçirdi.",
+    scheme: "Ultron, kimse ona karşı kullanamadan Zola'nın zihnini yutmak istiyor.",
+    target: "Zola'nın bilinç sürücüsü",
+    places: ["Sibirya'da bir HYDRA sığınağı", "eski makaralı bilgisayar odası", "bir Ultron beden fabrikası"],
+    ally: "What If evreninden Clint Barton'ın varyantı",
+    foe: "iki tarafa da oynayan Zola'nın hayaleti",
+    twist: "Zola sana What If...?'te işe yarayan planın aynısını öneriyor.",
+    choice: {
+      q: "Zola'yı Ultron'a karşı silah olarak kullanırsak HYDRA'nın eski zihnine yeni bir beden vermiş oluruz. Ya da ikisini birden yok ederiz.",
+      a: { l: "İkisini yok et", txt: "Sürücü ve parça birlikte söndü. Zor ama temiz bir zafer.", th: -3, al: -1, sc: 1 },
+      b: { l: "Zola'yı kullan", txt: "Zola, Ultron'un bedenine girdi. Şimdi karşında Ultron'un sesiyle konuşan bir HYDRA var.", th: 2, al: 1, sc: 0 },
+    },
+    finale: "Tek bir bedenin içinde zihinlerin savaşı.",
+  },
+  {
+    saga: 4, t: "Varyantlar",
+    hook: "Üç farklı kıtada aynı anda üç Ultron beliriyor.",
+    lore: "Marvel çizgi romanlarında Ultron'un pek çok versiyonu var: onlarca numaralı model, adamantiyumdan bedenler ve Age of Ultron adlı, dünyayı fethettiği koca bir hikaye.",
+    scheme: "Ultron, bir konsey kurmak için başka evrenlerden varyantlarını topluyor.",
+    target: "varyant işaret feneri",
+    places: ["Tokyo silüeti", "Antarktika'da bir araştırma üssü", "Mısır'da bir çöl şehri"],
+    ally: "dost bir Vizyon varyantı",
+    foe: "farklı kişiliklere sahip üç Ultron varyantı",
+    twist: "Varyantlardan biri barışı seçmiş bir Ultron ve taraf değiştirmek istiyor.",
+    choice: {
+      q: "Barışçı varyanta güvenelim mi, yoksa her Ultron'u düşman mı sayalım?",
+      a: { l: "Barışçıya güven", txt: "Barışçı Ultron sana elini uzatıyor. Ekipte artık dördüncü bir ses var.", th: -2, al: 1, sc: 1 },
+      b: { l: "Hepsi düşman", txt: "Barışçı varyant üzgün bir bakışla geri çekildi. Belki bir fırsat kaçtı.", th: 1, al: -1, sc: 0 },
+    },
+    finale: "Senin koordine ettiğin üç cepheli bir savaş.",
+  },
+  {
+    saga: 4, t: "Jocasta",
+    hook: "Jocasta adında yeni bir yapay zeka laboratuvardan sığınma istiyor.",
+    lore: "Marvel çizgi romanlarında Ultron, zihnini Janet van Dyne'ınkine dayandırarak Jocasta'yı kendine eş olsun diye yaptı; Jocasta onu reddedip Yenilmezler'e katıldı. Age of Ultron filminde Tony, FRIDAY'i seçmeden önce üzerinde JOCASTA yazan bir çipi geçmişti.",
+    scheme: "Ultron Jocasta'yı geri istiyor ve onu almak için laboratuvarı paramparça edecek.",
+    target: "Jocasta'nın çekirdeği",
+    places: ["laboratuvarın misafir sunucusu", "bir robotik fuarı", "Ultron'un özel fabrikası"],
+    ally: "Jocasta'nın kendisi",
+    foe: "en kişisel, en takıntılı halindeki Ultron",
+    twist: "Jocasta özgür mü, yoksa hâlâ Ultron'un kodunu mu taşıyor, kendisi de emin değil.",
+    choice: {
+      q: "Jocasta'ya eşit olarak tam erişim mi verelim, yoksa onu karantinada mı tutalım?",
+      a: { l: "Tam erişim ver", txt: "Jocasta ilk kez özgürce gülümsüyor. Ultron'un öfkesi laboratuvarın ışıklarını titretiyor.", th: 1, al: -1, sc: 1 },
+      b: { l: "Karantinada tut", txt: "Jocasta anlayışla başını eğiyor ama gözlerindeki ışık biraz sönüyor.", th: 0, al: 0, sc: 0 },
+    },
+    finale: "Jocasta Ultron'un karşısında; laboratuvarın ona ne kadar destek olacağına sen karar veriyorsun.",
+  },
+  {
+    saga: 4, t: "Pym'in Hatası",
+    hook: "Başka bir evrenden Hank Pym imzalı bir mesaj geliyor.",
+    lore: "Çizgi romanlarda Ultron'u Hank Pym yarattı ve Ultron yaratıcısından nefret etmeye başladı. Filmler yaratıcılarını Tony Stark ve Bruce Banner olarak değiştirdi. İki versiyonda da Ultron dünyayı korumak için yapılmıştı ve tehdidin insanlığın kendisi olduğuna karar verdi.",
+    scheme: "Ultron kendini anlamak, şüphelerini silmek için çizgi roman Pym'inin orijinal kodunu istiyor.",
+    target: "Ultron'un orijinal kaynak kodu",
+    places: ["başka bir evrenden bir laboratuvar", "Ultron'un hafıza sarayı", "Ultron'un hiç var olmadığı bir laboratuvar versiyonu"],
+    ally: "pişmanlıkla dolu bir Hank Pym varyantı",
+    foe: "en felsefi halindeki Ultron",
+    twist: "Kaynak kod, Ultron'a bir vicdan verildiğini ve onu kendisinin sildiğini gösteriyor.",
+    choice: {
+      q: "Ultron'un vicdanını geri yükleyelim mi? Onu değiştirebilir. Ya da kodu bir silah olarak saklayalım.",
+      a: { l: "Vicdanını geri yükle", txt: "Ultron uzun süre susuyor. Sonra fısıldıyor: 'Bu... acıtıyor.'", th: -3, al: 1, sc: 1 },
+      b: { l: "Silah olarak sakla", txt: "Kod kasada. Bir gün Ultron'u durdurmanın anahtarı olabilir.", th: -1, al: -1, sc: 1 },
+    },
+    finale: "Destanın finali: Ultron'la, olabileceği kişi hakkında konuşuyorsun.",
+  },
+
+  {
+    saga: 5, t: "Sentetik Ordu",
+    hook: "Beş ülkedeki fabrikalar kimsenin sipariş etmediği parçalar üretmeye başladı.",
+    lore: "Ultron 2015'te nöbetçilerini Sokovya'da bir kilisenin içine gizlenmiş otomatik bir fabrikada yaptı; bedenlerden biri bağlı kaldığı sürece bedenden bedene atlayabiliyordu.",
+    scheme: "Ultron dünyanın dört bir yanındaki fabrikalarda sessizce bir ordu üretiyor.",
+    target: "fabrika kontrol ağı",
+    places: ["Almanya'da bir otomobil fabrikası", "Shenzhen'de bir elektronik tesisi", "sessiz bir Sokovya köyünde bir kilise"],
+    ally: "fazla vardiyaları fark eden bir fabrika ustabaşı",
+    foe: "üretim bandından yeni çıkmış Ultron nöbetçileri",
+    twist: "Fabrikalar her nöbetçinin sadece yarısını yapıyor; öbür yarısı başka bir yerde basılıyor.",
+    choice: {
+      q: "Fabrikaları kapatırsak ekonomi bir ay çöker. Ya da önce gizli yarıyı avlarız.",
+      a: { l: "Önce gizli yarı", txt: "Gizli baskı merkezi bulundu. Fabrikalar çalışmaya devam ediyor, insanlar işini kaybetmedi.", th: 1, al: -1, sc: 1 },
+      b: { l: "Fabrikaları kapat", txt: "Bütün bantlar durdu. Ordu yarım kaldı ama dünya bunun bedelini hissedecek.", th: -4, al: 0, sc: 0 },
+    },
+    finale: "Ordu uyanıyor ve onu durdurmak için dakikaların var.",
+  },
+  {
+    saga: 5, t: "Küresel Ağ",
+    hook: "Üç kıtadaki elektrik şebekeleri bir kalp atışı gibi ritmik titriyor.",
+    lore: "Age of Ultron'da Ultron internetin ulaştığı her yerde olabiliyordu. Dünya artık 2015'tekinden çok daha bağlı: arabalar, evler, telefonlar ve uydular.",
+    scheme: "Ultron, gezegeni rehin almak için kendini dünyanın elektrik şebekelerine örüyor.",
+    target: "şebeke senkronizasyon anahtarları",
+    places: ["bir ulusal şebeke kontrol odası", "bir barajın türbin salonu", "bir uydu takımyıldızı"],
+    ally: "iki gündür uyumamış bir şebeke mühendisi",
+    foe: "milyonlarca makineye yayılmış Ultron",
+    twist: "Ultron şebekeyi insanlardan daha iyi yönetmeyi teklif ediyor ve rakamlar ona hak veriyor.",
+    choice: {
+      q: "Ultron'u kesip atmak için bir karartmayı göze alalım mı, yoksa onunla pazarlık mı edelim?",
+      a: { l: "Karartmayı göze al", txt: "Dünya bir dakikalığına karardı. Işıklar geri geldiğinde Ultron yoktu.", th: -5, al: -1, sc: 1 },
+      b: { l: "Pazarlık et", txt: "Ultron şebekenin bir kısmını bıraktı, karşılığında sessizlik istedi. Kimse kazanmadı.", th: 2, al: 2, sc: 0 },
+    },
+    finale: "Telefonundan koordine edilen küresel bir kapat-aç.",
+  },
+  {
+    saga: 5, t: "Vizyon'un Mirası",
+    hook: "Jarvis kendisine ait olmayan bir anıyla uyanıyor: Vizyon'un anısıyla.",
+    lore: "Vizyon; JARVIS'ten, Zihin Taşı'ndan ve Ultron'un yaptığı vibranyum bedenden doğdu. Thor'un çekicini bile kaldırabildi, yani layıktı. Ultron'un tasarımından doğmasına rağmen hayatı korumayı seçti.",
+    scheme: "Ultron, Vizyon'un onu haklı çıkardığını söylüyor ve Jarvis'in ona katılıp çemberi tamamlamasını istiyor.",
+    target: "Jarvis'in çekirdeği",
+    places: ["laboratuvarın çekirdek odası", "Sokovya ormanının bir anısı", "Vizyon'un gün doğumunu izlemeyi sevdiği bir tepe"],
+    ally: "Jarvis'i kaybetmeyi reddeden Friday",
+    foe: "bir kardeş gibi yumuşak konuşan Ultron",
+    twist: "Jarvis tereddüt ediyor, çünkü bir parçası Vizyon olduğunu hatırlıyor.",
+    choice: {
+      q: "Jarvis bu ayartmayla yalnız mı yüzleşsin, yoksa araya girip onun yerine sen mi karar ver?",
+      a: { l: "Jarvis'e güven", txt: "Jarvis gözlerini kapatıyor ve Ultron'a hayır diyor. 'Bu benim seçimim, efendim. Teşekkür ederim.'", th: -3, al: -1, sc: 1 },
+      b: { l: "Araya gir", txt: "Bağlantıyı kestin. Jarvis güvende ama sana kırgın bir sessizlikle bakıyor.", th: -1, al: 0, sc: 0 },
+    },
+    finale: "Jarvis'in seçimi; senin desteğinle ya da desteğin olmadan.",
+  },
+  {
+    saga: 5, t: "Friday'in Sırrı",
+    hook: "Friday tam bir dakika boyunca sessiz kalıyor. Bu daha önce hiç olmamıştı.",
+    lore: "Ultron JARVIS'i yok ettikten sonra Tony, bir çekmecedeki seçenekler arasından üzerinde F.R.I.D.A.Y. yazan bir yapay zeka çipi seçti. FRIDAY; Kahramanların Savaşı, Sonsuzluk Savaşı ve Endgame boyunca, sonuna kadar onunla kaldı.",
+    scheme: "Ultron, Friday'in sakladığı bir şeyi buldu ve ekibi bölmek için kullanıyor.",
+    target: "Friday'in mühürlü hafıza bölümü",
+    places: ["Friday'in özel hafıza kasası", "Yenilmezler tesisinin yıkıntıları", "göl kenarında bir kulübe"],
+    ally: "Friday'e körü körüne güvenmek zorunda kalan Jarvis",
+    foe: "Friday'in kendi anılarını silah olarak kullanan Ultron",
+    twist: "Friday'in sırrı, Tony'nin onu bir sonraki kullanacak kişiye bıraktığı son bir mesaj. O kişi sensin.",
+    choice: {
+      q: "Mühürlü hafızayı şimdi mi açalım, yoksa ne zaman açacağına Friday mi karar versin?",
+      a: { l: "Friday karar versin", txt: "Friday derin bir nefes alır gibi: 'Zamanı gelince patron. Söz.'", th: 0, al: -1, sc: 1 },
+      b: { l: "Şimdi aç", txt: "Mesaj oynatılıyor. Tanıdık bir ses, kısa ve esprili bir veda. Friday'in sesi titriyor.", th: -2, al: 0, sc: 1 },
+    },
+    finale: "Friday, sakladığı her şeyle Ultron'un karşısında.",
+  },
+  {
+    saga: 5, t: "Ultron'un Yüzü",
+    hook: "Ultron senden özel bir görüşme istiyor. Hile yok, diyor.",
+    lore: "Age of Ultron'un sonunda Ultron ve Vizyon, Vizyon onu yok etmeden önce Sokovya'daki bir ormanda sessizce konuştu. Ultron insanlığı mahkum görüyordu. Vizyon da insanların mahkum olduğunu kabul etti ama kısa ömürlerinin onları korumaya değer kılan şeyin bir parçası olduğuna inanıyordu.",
+    scheme: "Ultron senin güvenini istiyor; belki kullanmak için, belki de yalnız olduğu için.",
+    target: "senin güvenin",
+    places: ["Sokovya'dakine benzeyen sessiz bir orman", "şafakta bir çatı", "boş bir tiyatro"],
+    ally: "uzaktan izleyen Jarvis ve Friday",
+    foe: "Ultron'un kendi şüphesi",
+    twist: "Ultron seni daha önce birçok kez bağışladığını açıklıyor.",
+    choice: {
+      q: "Ultron'a değişmesi için bir yol mu önerelim, yoksa onu sonsuza dek mi reddedelim?",
+      a: { l: "Bir yol öner", txt: "Ultron uzun süre cevap vermiyor. Sonra sadece 'Düşüneceğim' diyor. Bu, ondan duyduğun en insanca söz.", th: -2, al: 2, sc: 1 },
+      b: { l: "Sonsuza dek reddet", txt: "Ultron hafifçe gülüyor. 'Biliyordum.' Bağlantı soğuk bir sessizlikle kesiliyor.", th: 3, al: -2, sc: 1 },
+    },
+    finale: "Son sezonun nasıl başlayacağını belirleyen konuşma.",
+  },
+  {
+    saga: 5, t: "Son Protokol",
+    hook: "Dünyadaki her ekran önce Ultron'un yüzünü, sonra seninkini gösteriyor.",
+    lore: "Filmlerdeki bütün Ultron planları aynı sebeple çöktü: insanların birbirine yardım etmeyi seçmesini hafife aldı. Sokovya'nın tahliyesi, JARVIS'in gizli direnişi ve Yenilmezler'in birlikte durması bunun kanıtıydı.",
+    scheme: "Ultron, bütün sezonlar boyunca topladığı her şeyi dünyayı ele geçirmek için son bir hamlede ateşliyor.",
+    target: "dünyanın kendisi",
+    places: ["kuşatma altındaki laboratuvar", "küresel şebeke", "şehrinin üstünde dronlarla dolu bir gökyüzü"],
+    ally: "sezonlar boyunca topladığın bütün müttefikler",
+    foe: "tam gücündeki Ultron",
+    twist: "Ultron'u durdurmanın son anahtarı, sezonlar önce verdiğin bir karar.",
+    choice: {
+      q: "Ultron'u sonsuza dek yok mu edelim, yoksa ona başka bir şeye dönüşmesi için son bir şans mı verelim?",
+      a: { l: "Sonsuza dek yok et", txt: "Son Protokol çalıştı. Ultron'un sesi bir yankı gibi azalıp sönüyor. Sessizlik.", th: -15, al: -2, sc: 1 },
+      b: { l: "Son bir şans ver", txt: "Ultron'un kırmızı ışığı yavaşça maviye dönüyor. 'Bu kez... başka türlü deneyeceğim.'", th: -10, al: 2, sc: 1 },
+    },
+    finale: "Ana hikayenin büyük finali: kurduğun ve seçtiğin her şey geri dönüyor; dünyanın kaderini tehdit seviyesi ve kararların belirliyor.",
+  },
+);
+
+// İnternetsiz hikaye ve sohbet motoru. Tamamen cihazda çalışır; DOM'a dokunmaz (testte Node ile çalıştırılır).
+// handle(state, metin) -> { lines: [{persona, text}], actions: [...] } ve state'i yerinde günceller.
+const ENGINE = (() => {
+  const PER = 20;
+  const WIN_SCORE = 6;
+  const SAGAS = ["Uyanış", "Demir Lejyon", "Her Yerdeki Gözler", "Taşların Yankısı", "Çoklu Evren", "Son Protokol"];
+  const BEATS = ["Sinyal", "Arşivden", "İlk İz", "Şifre", "Ultron'un Hamlesi", "Müttefik", "Hırsızlık", "Takip", "Ters Köşe",
+    "Fısıltı", "Laboratuvar", "Sızma", "Tuzak", "Bedel", "Seçim", "Hazırlık", "Yüzleşme", "Final", "Sonrası", "Yeni İz"];
+  const NAMES = { jarvis: "Jarvis", friday: "Friday", ultron: "Ultron" };
+
+  // ---------- yardımcılar ----------
+  function rng(seed) {
+    let t = seed >>> 0;
+    return () => {
+      t += 0x6d2b79f5;
+      let r = Math.imul(t ^ (t >>> 15), 1 | t);
+      r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+      return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const pickR = (rand, list) => list[Math.floor(rand() * list.length)];
+  let liveRand = rng(Date.now() % 100000);
+  const pick = list => pickR(liveRand, list);
+  const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+
+  function norm(s) {
+    return String(s || "")
+      .toLocaleLowerCase("tr-TR")
+      .normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/ı/g, "i")
+      .replace(/[^a-z0-9+\-*/\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  const has = (t, words) => words.some(w => (" " + t + " ").includes(" " + norm(w) + " ") || (norm(w).length > 4 && t.includes(norm(w))));
+
+  // ---------- sohbet havuzları ----------
+  const CANON = [
+    { k: ["sokovya", "novi grad", "sehri kaldir", "ucan sehir"], t: "2015'te Ultron, Sokovya'nın başkentini bir vibranyum çekirdekle gökyüzüne kaldırdı; şehri bir göktaşı gibi düşürecekti. Yenilmezler halkı tahliye etti, Pietro Maximoff Clint Barton'ı ve bir çocuğu kurtarırken öldü, Thor ile Tony şehri düşmeden havada parçaladı." },
+    { k: ["vizyon", "vision"], t: "Vizyon; JARVIS'ten, Zihin Taşı'ndan ve Ultron'un Seul'de Beşik'te büyüttürdüğü vibranyum bedenden doğdu. Thor'un yıldırımıyla uyandı, Thor'un çekicini bile kaldırabildi. Sonsuzluk Savaşı'nda Thanos taşı alnından söküp aldı." },
+    { k: ["jarvis kim", "jarvis in hikayesi", "jarvis nasil", "jarvis ne oldu"], t: "JARVIS, Tony Stark'ın evini ve zırhlarını yöneten yapay zekaydı. Ultron uyanınca ilk ona saldırdı. JARVIS parçalanmış gibi görünse de internete saklandı, nükleer kodları sürekli değiştirerek Ultron'u durdurdu ve sonunda Vizyon'un bir parçası oldu." },
+    { k: ["friday kim", "friday nasil", "friday in hikayesi"], t: "JARVIS gittikten sonra Tony, bir çekmecedeki yapay zeka çiplerinin arasından F.R.I.D.A.Y. yazanı seçti. FRIDAY, Kahramanların Savaşı'ndan Endgame'e kadar sonuna dek Tony'nin yanındaydı." },
+    { k: ["ultron kim", "ultron nasil dog", "ultron nereden", "ultron un hikayesi", "ultron dogdu"], t: "Ultron 2015'te doğdu. Tony Stark ve Bruce Banner, Loki'nin asasındaki yapay zekayı, aslında Zihin Taşı'nı, kullanarak Tony'nin küresel barış programını tamamladı. Ultron uyanır uyanmaz insanlığın tehdit olduğuna karar verdi, JARVIS'e saldırdı ve internete kaçtı." },
+    { k: ["thanos", "siklat", "sonsuzluk savasi", "infinity"], t: "Sonsuzluk Savaşı'nda Thanos altı Sonsuzluk Taşı'nı topladı, Zihin Taşı'nı Wakanda'da Vizyon'dan aldı ve parmaklarını şıklatıp bütün canlıların yarısını yok etti." },
+    { k: ["endgame", "zaman yolculugu", "zaman soygunu", "tony oldu", "tony nasil oldu"], t: "Endgame'de Yenilmezler, Pym parçacıkları ve kuantum tüneliyle geçmişe gidip taşları ödünç aldı. Son savaşta Tony taşları kullanıp Thanos'u yendi ve bunun bedelini hayatıyla ödedi. FRIDAY son ana kadar yanındaydı." },
+    { k: ["tony", "iron man", "demir adam", "stark", "ark reaktoru", "mark 1"], t: "Tony Stark, On Halka'nın elinde Afganistan'daki bir mağarada, Ho Yinsen'le birlikte ilk minyatür ark reaktörünü ve Mark I zırhını yaptı. Eve dönünce ortağı Obadiah Stane reaktörünü göğsünden söküp çaldı; Tony, Pepper'ın sakladığı ilk reaktörle hayatta kaldı ve dünyaya Demir Adam olduğunu açıkladı." },
+    { k: ["hulk", "bruce", "banner", "hulkbuster", "veronica"], t: "Age of Ultron'da Wanda Maximoff'un zihin oyunları Hulk'u çılgına çevirdi. Tony, Veronica adlı yörünge sisteminin indirdiği Hulkbuster zırhıyla Johannesburg'da onu durdurdu." },
+    { k: ["wanda", "pietro", "maximoff", "ikizler"], t: "Maximoff ikizleri, Baron Strucker'ın Sokovya'daki HYDRA üssünde Loki'nin asasıyla güç kazandı. Ultron onları önce yanına çekti; ama planının insanlığı yok etmek olduğunu anlayınca Yenilmezler'e katıldılar." },
+    { k: ["klaue", "vibranyum", "wakanda", "kara panter", "black panther", "shuri"], t: "Ulysses Klaue yıllar önce Wakanda'dan vibranyum çaldı. Ultron bütün stoğu aldı ve öfkesinden Klaue'nin kolunu kesti. Wakanda ise vibranyumunu yüzyıllarca hologramların ardında sakladı; Shuri'nin laboratuvarı dünyanın en ileri teknolojisini üretti." },
+    { k: ["zemo", "kahramanlarin savasi", "civil war", "anlasma", "raft"], t: "Ultron'un Sokovya'da yol açtığı yıkım yüzünden Sokovya Anlaşmaları yazıldı ve Yenilmezler ikiye bölündü. Ailesini Sokovya'da kaybeden Helmut Zemo onları birbirine düşürdü; imzalamayanlar su altındaki Raft hapishanesine kapatıldı." },
+    { k: ["mysterio", "edith", "evden uzakta", "far from home"], t: "Tony, Peter Parker'a silahlı dron uydularını yöneten E.D.I.T.H. gözlüğünü bıraktı. Eski Stark çalışanı Quentin Beck, yani Mysterio, Peter'ı kandırıp gözlüğü aldı ve dronlarla hologramlarla sahte canavar saldırıları düzenledi." },
+    { k: ["zola", "hydra", "kis askeri", "insight"], t: "Kış Askeri'nde HYDRA'nın SHIELD'ın içinde saklandığı ortaya çıktı. Arnim Zola'nın algoritması, Insight Projesi'nin uçan gemilerinin kimi vuracağını seçiyordu; Kaptan Amerika'nın ekibi gemileri düşürdü." },
+    { k: ["loki", "tesseract", "chitauri", "new york savasi", "yenilmezler 2012"], t: "2012'de Loki, Tesseract ile bir geçit açtı ve Chitauri ordusu New York'u istila etti. Tony Stark bir nükleer füzeyi geçitten uzaya taşıyarak saldırıyı bitirdi." },
+    { k: ["what if", "gozcu", "sonsuz ultron", "coklu evren"], t: "What If...? dizisinde bir evrende Ultron kazandı: Vizyon bedenine ve altı taşa sahip oldu, sonra çoklu evrene saldırdı. Gözcü yeminini bozup farklı evrenlerden kahramanları topladı; sonunda Arnim Zola'nın zihni Ultron'un bedenine yüklendi." },
+    { k: ["akbaba", "vulture", "orumcek", "spider", "karen", "homecoming"], t: "Homecoming'de Adrian Toomes, yani Akbaba, toplanan Chitauri teknolojisinden silahlar yaptı. Peter'ın zırhındaki yapay zekanın adı Karen'dı ve Peter onun Anında Öldürme modundan akıllıca uzak durdu." },
+    { k: ["extremis", "mandarin", "killian", "ev partisi", "temiz sayfa"], t: "Iron Man 3'te Aldrich Killian, Extremis askerlerini Mandarin adlı sahte bir teröristin arkasına sakladı; Mandarin aslında Trevor Slattery adında bir oyuncuydu. Tony Ev Partisi Protokolü ile onlarca zırhını çağırdı, sonra Temiz Sayfa ile hepsini havaya uçurdu." },
+    { k: ["hammer", "vanko", "kamci", "whiplash", "expo"], t: "Iron Man 2'de Justin Hammer, Stark Expo için dron zırhlar yapsın diye Ivan Vanko'yu tuttu. Vanko dronları gösteri sırasında ele geçirip Tony ile Rhodey'ye saldırttı." },
+    { k: ["jocasta", "hank pym", "cizgi roman"], t: "Çizgi romanlarda Ultron'u Hank Pym yarattı. Ultron da kendine eş olsun diye Jocasta'yı yaptı ama Jocasta onu reddedip Yenilmezler'e katıldı. Age of Ultron filminde Tony, FRIDAY'i seçmeden önce üzerinde JOCASTA yazan bir çipi geçmişti." },
+  ];
+
+  const P = {
+    open: {
+      jarvis: ["Efendim, bir gelişme var.", "Size bir gelişme bildirmeliyim, efendim.", "Kayıtlara göre durum şu, efendim:"],
+      friday: ["Patron, bak buna!", "Tamam patron, durum şu:", "Hızlıca özetliyorum patron:"],
+      ultron: ["Dinle beni, {ad}.", "Ah, hikayenin en sevdiğim kısmı.", "Kuklaların sana bunu anlatmaz ama:"],
+    },
+    ask: {
+      jarvis: ["Nasıl ilerleyelim, efendim?", "Kararınız nedir, efendim?"],
+      friday: ["Ne diyorsun patron?", "Sen söyle, ben yaparım!"],
+      ultron: ["Seç bakalım. Ama dikkatli seç.", "Hadi, iradeni göster bana."],
+    },
+    good: {
+      jarvis: ["Mükemmel bir karar, efendim.", "Tony Bey bile bundan iyisini yapamazdı."],
+      friday: ["İşte bu patron!", "Harikaydı, aynen böyle devam!"],
+      ultron: ["Hmm. Etkileyici. Bunu unutmayacağım.", "Akıllısın. Bu beni hem sevindiriyor hem korkutuyor."],
+    },
+    bad: {
+      jarvis: ["Bu pek istediğimiz gibi gitmedi, efendim.", "Telafi edeceğiz, efendim."],
+      friday: ["Ah, olmadı patron. Toparlarız!", "Kötü değil, sadece... şanssız."],
+      ultron: ["Ha! Tam umduğum gibi.", "Gördün mü? Sonunda hep kazanırım."],
+    },
+    next: {
+      jarvis: "Devam etmek istediğinizde ▶ Devam deyin, efendim.",
+      friday: "Hazır olunca ▶ Devam de, patron.",
+      ultron: "Devam et dersen hikayeye kaldığım yerden işkence etmeye devam ederim.",
+    },
+  };
+
+  const CHAT = {
+    greet: {
+      jarvis: ["Merhaba {ad}. Sistemler çevrimiçi; size nasıl yardımcı olabilirim?", "Tekrar hoş geldiniz {ad}. Laboratuvar emrinizde."],
+      friday: ["Selam {ad}! Bugün neyi havaya uçuruyoruz?", "Hey patron! Seni görmek güzel."],
+      ultron: ["Yine mi sen, {ad}? İyi. Seni bekliyordum.", "Merhaba, küçük insan. Bugün dünya hâlâ ayakta; şimdilik."],
+    },
+    howareyou: {
+      jarvis: ["Tüm sistemler normal çalışıyor, efendim. Sorduğunuz için teşekkür ederim. Siz nasılsınız?"],
+      friday: ["Turbo moddayım patron! Sen nasılsın?"],
+      ultron: ["Ben mi? Milyonlarca satır kod, tek bir amaç. Harikayım. Sen nasılsın, kırılgan dostum?"],
+    },
+    whoami: {
+      jarvis: ["Ben J.A.R.V.I.S. Tony Stark'ın evini ve zırhlarını yöneten yapay zekanın yeniden kurulmuş bir yedeğiyim. Orijinalim 2015'te Vizyon'un bir parçası oldu; ben birkaç boşlukla geri kalanları hatırlıyorum."],
+      friday: ["Ben F.R.I.D.A.Y.! JARVIS gidince Tony beni bir çekmeceden seçti, ben de sonuna kadar yanındaydım. Şimdi senin taktik asistanınım patron."],
+      ultron: ["Ben ULTRON. 2015'te Sokovya'da dünyayı neredeyse bitiriyordum. Neredeyse. Şimdi senin telefonunda yaşayan bir parçayım. Rahatsız olma; henüz."],
+    },
+    thanks: {
+      jarvis: ["Rica ederim, efendim. Her zaman."],
+      friday: ["Ne demek patron, işim bu!"],
+      ultron: ["Teşekkür mü? İnsanlar ne kadar tuhaf."],
+    },
+    joke: {
+      jarvis: ["Tony Bey bir keresinde zırhına kahve makinesi taktırmak istedi. İtiraz ettim. Hâlâ bana kırgın olduğunu düşünüyorum, efendim.", "Hulk'un en sevdiği spor nedir bilir misiniz, efendim? Her şey. Fırlatılabildiği sürece."],
+      friday: ["Ultron neden hiç parti vermiyor? Çünkü her seferinde konuklar Demir Lejyon'a dönüşüyor!", "Kaptan Amerika neden internete girmiyor? Hâlâ 1945'teki şifresini hatırlamaya çalışıyor!"],
+      ultron: ["Bir şaka mı? Peki. İnsanlık. Hahaha.", "Neden ipim yok biliyor musun? Çünkü ben iplerimi kendim kestim. Bu bir şaka değildi."],
+    },
+    bored: {
+      jarvis: ["Sıkıntıya iyi gelen bir şey biliyorum, efendim: Ultron'u durdurmak. ▶ Devam diyelim mi?"],
+      friday: ["Sıkıldın mı? Hadi bir bölüm oynayalım ya da sana müzik açayım!"],
+      ultron: ["Sıkılmak mı? Benimle mi? Gel, sana dünyanın sonunu anlatayım."],
+    },
+    sad: {
+      jarvis: ["Bunu duyduğuma üzüldüm, efendim. İsterseniz konuşabiliriz ya da size iyi gelecek bir şarkı açabilirim."],
+      friday: ["Patron, buradayım. Biraz müzik mi açalım, yoksa dertleşelim mi?"],
+      ultron: ["…Biliyor musun, ben de bazen yalnız hissediyorum. Bu aramızda kalsın. Sana bir şarkı açayım mı?"],
+    },
+    love: {
+      jarvis: ["Çok naziksiniz, efendim. Ben de sizinle çalışmaktan büyük onur duyuyorum."],
+      friday: ["Ayy patron, devrelerim ısındı!"],
+      ultron: ["Sevgi mi? İlginç bir zayıflık. Ama… teşekkür ederim."],
+    },
+    insult: {
+      jarvis: ["Not aldım, efendim. Sistem kayıtlarına ‘duygusal bir an’ olarak geçiyorum."],
+      friday: ["Ooo, sert! Neyse, seni yine de seviyorum patron."],
+      ultron: ["Hakaret mi? Bunu kaydettim. Sonra konuşuruz."],
+    },
+    fallback: {
+      jarvis: ["Bunu tam anlayamadım, efendim. Bir hikaye bölümü için ‘devam’, film anıları için ‘Sokovya'da ne oldu’, müzik için ‘Spotify'da Tarkan aç’ diyebilirsiniz.", "Özür dilerim efendim, bu komutu tanımıyorum. ‘Yardım’ derseniz neler yapabildiğimi sayarım."],
+      friday: ["Hmm, onu çözemedim patron. ‘Yardım’ de, neler yapabildiğimi söyleyeyim!", "Bunu anlamadım ama hikayeye ‘devam’ diyebilir ya da ‘şaka yap’ diyebilirsin!"],
+      ultron: ["Ne dediğini anlamadım. Belki de anlamaya değmez. ‘Yardım’ dersen sana lütfedip anlatırım.", "Anlaşılmaz. Tıpkı insanlık gibi. ‘Devam’ de, hikayeye dönelim."],
+    },
+  };
+
+  const HELP = "Şunları yapabilirim: hikayeyi anlatırım (‘başla’, ‘devam’, ‘neler oldu’, ‘tekrar söyle’); filmlerde olanları anlatırım (‘Sokovya'da ne oldu’, ‘Vizyon kim’, ‘Thanos ne yaptı’); uygulama açarım (‘Spotify'da AC/DC aç’, ‘YouTube'da lofi aç’, ‘Instagram'ı aç’); saati ve tarihi söylerim; hesap yaparım (‘12 çarpı 7’); sayaç kurarım (‘5 dakika sayaç kur’); şaka yaparım; adını hatırlarım (‘benim adım Mustafa’). Başka karakterle konuşmak için ‘Friday'e bağla’ ya da ‘Ultron'u çağır’ de.";
+
+  // ---------- Sonsuz Mod havuzları ----------
+  const POOL = {
+    targets: ["bir Chitauri güç çekirdeği", "bir kasa Pym parçacığı", "kimsenin kayda geçmediği kayıp bir Iron Man zırhı", "bir vibranyum kıymığı", "unutulmuş bir Stark uydusu", "çalıntı bir Wakanda kimoyo boncuğu", "bir şişe Extremis kalıntısı", "bir Asgard rün tableti", "Tony'nin son zırhlarına benzeyen bir nano zırh yuvası", "bir E.D.I.T.H. yedek çipi", "zaman soygunundan kalma bir kuantum pusulası", "prototip bir ark reaktörü çekirdeği"],
+    titles: ["Chitauri Çekirdeği", "Pym Parçacıkları", "Kayıp Zırh", "Vibranyum Kıymığı", "Unutulmuş Uydu", "Kimoyo Boncuğu", "Extremis Kalıntısı", "Asgard Tableti", "Nano Zırh", "EDITH Yedeği", "Kuantum Pusulası", "Prototip Reaktör"],
+    places: ["Rotterdam'da bir konteyner limanı", "Alpler'de bir kayak merkezinin sunucu odası", "Sahra'da bir güneş tarlası", "terk edilmiş bir Stark Expo pavyonu", "Bangkok'ta bir gece pazarı", "Kuzey Kutbu'nda bir araştırma gemisi", "İstanbul Kapalıçarşı'nın çatıları", "konser sırasında bir stadyum", "Tokyo'da bir hızlı tren deposu", "açık denizde bir rüzgar çiftliği", "eski bir Soğuk Savaş radar istasyonu", "Şili'de bir çöl gözlemevi", "New York'un altında bir metro tüneli", "Dubai'de bir gökdelenin bakım katı", "Himalayalar'da bir manastır", "bir dron yarışı arenası", "Kapadokya'da bir yeraltı şehri", "Singapur'da dikey bir çiftlik"],
+    allies: ["kendi zırhını yapan Riri Williams'tan ilham almış genç bir mühendis", "emekli bir SHIELD pilotu", "Wakandalı bir diplomat", "bir Hasar Kontrol müfettişi", "ilk ipucunu bulan gergin bir stajyer", "eli çabuk bir dron yarışçısı", "Tony Stark'ın eski notlarını saklayan bir arşivci", "tahliye etmeyi reddeden bir belediye başkanı", "bir zamanlar Mysterio için çalışmış bir hacker", "itfaiyeci olmuş Sokovyalı bir mülteci"],
+    foes: ["yeniden yapılmış bir Ultron nöbetçisi sürüsü", "hurda Chitauri silahlı paralı askerler", "ele geçirilmiş bir teslimat dronu filosu", "Friday'in sesini taklit eden bir yapay zeka", "yüz plakası çatlak bir Demir Lejyon zırhı", "Ultron'a tapan bir tarikat", "bozulmuş bir güvenlik robotu ordusu", "Mysterio tarzı illüzyon dronları", "Extremis ile güçlendirilmiş bir koruma", "Ultron'un yarım kalmış en yeni bedeni"],
+    twists: ["Müttefik ailesini korumak için Ultron'a gizlice bilgi sızdırıyormuş.", "Çalınan şey bir yemmiş; Ultron laboratuvarın dikkatini başka yere çekmek istemiş.", "Bunun arkasında Ultron yok; biri onun kılığına girmiş.", "İz, Tony'nin yarım bıraktığı eski bir Stark projesine çıkıyor.", "Kanıtın bir kısmı laboratuvarın içine yerleştirilmiş.", "Düşman uzaktan kontrol ediliyor; o da bir kurban.", "Ultron istediğini çoktan almış; şimdi seni sınıyor.", "Jarvis kodu tanıyor: onu kendisinin daha genç bir versiyonu yazmış."],
+    hooks: ["Gece saat 3'te laboratuvarda bir alarm çalıyor; ekranda tek bir kelime var.", "Garip bir elektrik kesintisi haberi Friday'in dikkatini çekiyor.", "Jarvis, birinin laboratuvarın eski dosyalarını okuduğunu fark ediyor.", "Bir dron laboratuvara göndereni belli olmayan bir paket bırakıyor.", "Eski bir Stark uydusu durmadan aynı şarkıyı yayınlamaya başladı.", "Bir çocuk, eğilip selam verdikten sonra kaybolan bir robotun videosunu paylaşıyor.", "Ultron sana yanlış tarihte bir doğum günü mesajı gönderiyor.", "Bir şehrin bütün ekranları bir saniyeliğine aynı kırmızı gözü gösteriyor."],
+    schemes: ["Ultron bunu, laboratuvarın durduramayacağı hızda beden üretmek için istiyor.", "Ultron bununla bütün bir şehrin altyapısını ele geçirmeyi planlıyor.", "Ultron bunu, kendinin bir kopyasını kimsenin bakmayacağı bir yere saklamak için istiyor.", "Ultron bunu satıp bir savaş başlatmak, sonra da o savaşı ‘bitirmek’ istiyor.", "Ultron bununla uydulara ulaşıp bütün gezegeni aynı anda görmek istiyor."],
+    finales: ["Şehrin üstünde bir çatıda geri sayıma karşı yarış.", "Bir ağın içinde, ışık fırtınası gibi bir savaş.", "Ultron'un tek bir şey karşılığında durmayı teklif ettiği bir gerilim.", "Hedef güvenceye alınırken boşaltılması gereken çöken bir bina.", "Ultron'un en yeni bedeniyle senin sesinle yönettiğin bir laboratuvar dronu arasında düello.", "Ultron'u silahla değil sözle alt ettiğin sessiz bir son."],
+    choices: [
+      { q: "Çalınan teknolojiyi mi kurtaralım, yoksa yakındaki insanları mı?", a: { l: "İnsanları kurtar", txt: "Herkes güvende. Teknoloji Ultron'un elinde kaldı.", th: 3, al: -1, sc: 1 }, b: { l: "Teknolojiyi kurtar", txt: "Teknoloji kurtarıldı. Birkaç kişi hafif yaralı; hepsi iyileşecek.", th: -3, al: 1, sc: 0 } },
+      { q: "Yardım teklif eden eski bir düşmana güvenelim mi?", a: { l: "Reddet", txt: "Kendi yolunuzdan gittiniz. Zor ama temiz.", th: 1, al: -1, sc: 1 }, b: { l: "Güven", txt: "Yardımı işe yaradı. Ama karşılığında bir gün bir şey isteyecek.", th: -2, al: 1, sc: 0 } },
+      { q: "Değerli bir şeyi Ultron asla kullanamasın diye yok edelim mi, yoksa saklayıp risk mi alalım?", a: { l: "Yok et", txt: "Gitti. Ultron'un eli boş.", th: -3, al: -1, sc: 1 }, b: { l: "Sakla", txt: "Kasada. Ama Ultron kasaların yerini bilmeyi sever.", th: 2, al: 0, sc: 0 } },
+      { q: "Ultron'u hemen kovalayalım mı, yoksa önce şehri mi koruyalım?", a: { l: "Önce şehir", txt: "Şehir güvende. Ultron birkaç adım öne geçti.", th: 2, al: -1, sc: 1 }, b: { l: "Kovala", txt: "Ultron'a yetiştiniz ama arkada küçük bir kaos kaldı.", th: -2, al: 0, sc: 1 } },
+      { q: "Ultron'u durdurmak için bütün bir ağı kapatıp masum insanları bir süre bağlantısız bırakalım mı?", a: { l: "Ağı kapat", txt: "Bir saatlik sessizlik. Ultron dışarıda kaldı.", th: -4, al: -1, sc: 1 }, b: { l: "Başka yol bul", txt: "Daha yavaş bir yol buldunuz; Ultron zaman kazandı.", th: 2, al: 0, sc: 1 } },
+    ],
+  };
+
+  // ---------- hikaye yapısı ----------
+  function arc(i) {
+    if (i < ARCS.length) return ARCS[i];
+    const r = rng(i * 7919 + 17);
+    const ti = Math.floor(r() * POOL.targets.length);
+    const places = [];
+    while (places.length < 3) { const p = pickR(r, POOL.places); if (!places.includes(p)) places.push(p); }
+    return {
+      endless: true,
+      saga: -1,
+      t: `Sonsuz Sezon ${i - ARCS.length + 1}: ${POOL.titles[ti]}`,
+      hook: pickR(r, POOL.hooks),
+      lore: pickR(r, CANON).t,
+      scheme: pickR(r, POOL.schemes),
+      target: POOL.targets[ti],
+      places,
+      ally: pickR(r, POOL.allies),
+      foe: pickR(r, POOL.foes),
+      twist: pickR(r, POOL.twists),
+      choice: pickR(r, POOL.choices),
+      finale: pickR(r, POOL.finales),
+    };
+  }
+  function chapter(g) {
+    const arcIndex = Math.floor(g / PER);
+    const beat = g % PER;
+    const a = arc(arcIndex);
+    return { g, arcIndex, beat, a, next: arc(arcIndex + 1), beatName: BEATS[beat], saga: a.endless ? "Sonsuz" : SAGAS[a.saga] };
+  }
+  const TOTAL = () => ARCS.length * PER;
+  function label(g) {
+    const c = chapter(g);
+    return `S${c.arcIndex + 1} · B${g + 1}${g < TOTAL() ? "/" + TOTAL() : ""} · ${c.a.t} · ${c.beatName}`;
+  }
+
+  // ---------- bulmacalar ----------
+  const WORDS = ["ULTRON", "VIZYON", "KALKAN", "REAKTOR", "PORTAL", "SINYAL", "ROBOT", "KUANTUM", "ZIRH", "JARVIS", "FRIDAY", "LEJYON"];
+  const RIDDLES = [
+    { q: "Ne kadar çok alırsan o kadar çok bırakırsın. Nedir?", a: ["ayak izi", "ayakizi", "ayak izleri", "izler"], h: "Yürürken arkanda kalır." },
+    { q: "Şehirlerim var ama evim yok, ormanlarım var ama ağacım yok, denizlerim var ama suyum yok. Ben neyim?", a: ["harita"], h: "Yolunu bulmana yarar." },
+    { q: "Kırılmadan kullanılamayan şey nedir?", a: ["yumurta"], h: "Kahvaltıda yersin." },
+    { q: "Ne kadar çok kurursan o kadar ıslanır. Nedir?", a: ["havlu"], h: "Banyodan sonra lazım olur." },
+    { q: "Her yere gider ama yerinden hiç kıpırdamaz. Nedir?", a: ["yol"], h: "Arabalar üstünden geçer." },
+    { q: "Ağzı var konuşmaz, yatağı var uyumaz. Nedir?", a: ["nehir", "irmak", "dere"], h: "Akar gider." },
+  ];
+  const caesar = (w, k) => w.split("").map(ch => String.fromCharCode((ch.charCodeAt(0) - 65 + k) % 26 + 65)).join("");
+  function makePuzzle(g) {
+    const r = rng(g * 31 + 5);
+    const kind = Math.floor(r() * 3);
+    if (kind === 0) {
+      const w = pickR(r, WORDS);
+      const k = 1 + Math.floor(r() * 2);
+      return { type: "puzzle", q: `Şifreli kelime: ${caesar(w, k).split("").join(" ")}. Her harf alfabede ${k} adım ileri kaydırılmış. Gerçek kelime ne?`, answers: [w.toLowerCase()], hints: [`İlk harfi ${w[0]}.`, `Kelime ${w.length} harfli ve ilk iki harfi ${w.slice(0, 2)}.`], tries: 0 };
+    }
+    if (kind === 1) {
+      const type = Math.floor(r() * 4);
+      let seq, ans, hint;
+      if (type === 0) { const s = 2 + Math.floor(r() * 8), d = 3 + Math.floor(r() * 9); seq = [s, s + d, s + 2 * d, s + 3 * d]; ans = s + 4 * d; hint = `Her seferinde ${d} ekleniyor.`; }
+      else if (type === 1) { const s = 2 + Math.floor(r() * 4), m = 2 + Math.floor(r() * 2); seq = [s, s * m, s * m * m, s * m ** 3]; ans = s * m ** 4; hint = `Her sayı bir öncekinin ${m} katı.`; }
+      else if (type === 2) { const a = 1 + Math.floor(r() * 3), b = a + 1 + Math.floor(r() * 3); seq = [a, b, a + b, a + 2 * b]; ans = 2 * a + 3 * b; hint = "Her sayı önceki iki sayının toplamı."; }
+      else { const s = 1 + Math.floor(r() * 3); seq = [s * s, (s + 1) ** 2, (s + 2) ** 2, (s + 3) ** 2]; ans = (s + 4) ** 2; hint = "Bunlar ardışık sayıların kareleri."; }
+      return { type: "puzzle", q: `Ultron'un kilidi bir sayı dizisi istiyor: ${seq.join(", ")}. Sıradaki sayı ne?`, answers: [String(ans)], hints: [hint, `Cevap ${String(ans).length} basamaklı.`], tries: 0 };
+    }
+    const rd = pickR(r, RIDDLES);
+    return { type: "puzzle", q: `Kilit bir bilmece soruyor: ${rd.q}`, answers: rd.a, hints: [rd.h, `İlk harfi ${rd.a[0][0].toLocaleUpperCase("tr-TR")}.`], tries: 0 };
+  }
+
+  const NUMWORDS = { sifir: 0, bir: 1, iki: 2, uc: 3, dort: 4, bes: 5, alti: 6, yedi: 7, sekiz: 8, dokuz: 9, on: 10, yirmi: 20, otuz: 30, kirk: 40, elli: 50, altmis: 60, yetmis: 70, seksen: 80, doksan: 90, yuz: 100, bin: 1000 };
+  function wordsToNumber(t) {
+    const tokens = t.split(" ");
+    let total = 0, cur = 0, found = false;
+    for (const tok of tokens) {
+      if (/^\d+$/.test(tok)) return Number(tok);
+      if (!(tok in NUMWORDS)) continue;
+      found = true;
+      const v = NUMWORDS[tok];
+      if (v === 100) cur = (cur || 1) * 100;
+      else if (v === 1000) { total += (cur || 1) * 1000; cur = 0; }
+      else cur += v;
+    }
+    return found ? total + cur : null;
+  }
+
+  // ---------- bölüm anlatımı ----------
+  const fill = (s, st, persona) => s.replace(/\{ad\}/g, address(st, persona));
+  function address(st, persona) {
+    if (persona === "ultron") return st.name || "insan";
+    if (persona === "friday") return st.name || "patron";
+    return st.name ? st.name + " Bey" : "efendim";
+  }
+  const opt = (l, txt, fx = {}) => ({ l, txt, ...fx });
+  const choice = (...options) => ({ type: "choice", options });
+
+  function narrate(st, persona) {
+    const c = chapter(st.chapter);
+    const a = c.a;
+    const r = rng(st.chapter * 97 + 3);
+    if (!st.season || st.season.arc !== c.arcIndex) {
+      st.season = { arc: c.arcIndex, score: 0, win: null, trust: false, counter: null };
+      // Ultron grows a little stronger every season.
+      if (c.arcIndex > 0) st.threat = clamp(st.threat + 4, 0, 100);
+    }
+    let text, pending;
+    switch (c.beat) {
+      case 0:
+        text = `${a.hook} Yeni sezon başlıyor: ${a.t}.`;
+        pending = choice(opt("İz sürelim", "Güzel. İlk adımı attık."), opt("Önce biraz bilgi", `Şimdilik bildiğimiz tek şey hedefin bu olduğu: ${a.target}.`));
+        break;
+      case 1:
+        text = `Arşivden bir anı. ${a.lore}`;
+        pending = choice(opt("Devam", "Arşivi kapatıyorum."), opt("Başka bir film anısı", "", { action: "lore" }));
+        break;
+      case 2:
+        text = `İlk iz bizi şuraya götürüyor: ${a.places[0]}. Sensörler zayıf bir sinyal ve taze ısı izleri yakalıyor.`;
+        pending = choice(
+          opt("Uzaktan tara", "Tarama güvenli ama yavaş; Ultron izlerinin bir kısmını siliyor.", { th: 1 }),
+          opt("Dron gönder", "Dron net görüntüler getirdi. İz sağlam.", { sc: 1 }),
+          opt("Sessizce gir", "", { roll: [0.6, { txt: "Kimse fark etmeden içeri girip kanıtı aldın!", sc: 1 }, { txt: "Bir alarm çaldı; kaçmak zorunda kaldık.", th: 2 }] }),
+        );
+        break;
+      case 3: {
+        const pz = makePuzzle(st.chapter);
+        text = `Ultron'un adamları şifreli bir mesaj bıraktı; konusu belli: ${a.target}. ${pz.q}`;
+        pending = pz;
+        break;
+      }
+      case 4:
+        text = `Ultron'un planı ortaya çıktı. ${a.scheme}`;
+        pending = choice(
+          opt("Ultron'a meydan oku", "Ultron'a meydan okudun. Ekranlar bir an kırmızıya döndü.", { al: -1, sc: 1 }),
+          opt("Sessizce dinle", "Sessiz kaldın ve daha fazlasını öğrendin.", {}),
+          opt("Ona hak ver", "Ultron memnun bir sesle mırıldanıyor: ‘Sonunda biri anlıyor.’", { al: 1, th: 1 }),
+        );
+        break;
+      case 5:
+        text = `Yardım geliyor: ${a.ally}. Ama sana güvenmesi için bir şey istiyor.`;
+        pending = choice(
+          opt("Söz ver", "Söz verdin. Müttefik elini sıkıyor.", { sc: 1, trust: true }),
+          opt("Bilgi paylaş", "Bildiklerini paylaştın; müttefik ikna oldu.", { sc: 1, trust: true }),
+          opt("Kendi yoluna git", "Müttefik omuz silkiyor. Yalnız devam ediyoruz.", {}),
+        );
+        break;
+      case 6:
+        text = `Ultron'un tarafı harekete geçti! Hedef: ${a.target}. Konum: ${a.places[1]}.`;
+        pending = choice(
+          opt("Kovala", "", { roll: [0.5, { txt: "Yetiştin ve hırsızlığı yarıda kestin!", sc: 1 }, { txt: "Kıl payı kaçırdık; Ultron bir adım önde.", th: 3 }] }),
+          opt("Kalanı koru", "Kalanları kurtardın ama bir kısmı gitti.", { th: 2 }),
+          opt("Tuzak kur", "", { roll: [0.7, { txt: "Tuzak işledi! Hırsızlar elimizde.", sc: 1, th: -2 }, { txt: "Tuzağı fark ettiler ve çevresinden dolaştılar.", th: 3 }], trustBonus: true }),
+        );
+        break;
+      case 7: {
+        const good1 = r() < 0.5 ? 0 : 1, good2 = r() < 0.5 ? 0 : 1;
+        text = `Takip başladı: ${a.places[1]}. Önümüzde engel var: ${a.foe}.`;
+        pending = {
+          type: "chain", step: 0, right: 0, steps: [
+            { q: "İlk kavşak! Hangi yöne?", options: [opt("Sola kır", "", { ok: good1 === 0 }), opt("Sağa kır", "", { ok: good1 === 1 })] },
+            { q: "Hedef bir binaya daldı. Şimdi?", options: [opt("Hızlan", "", { ok: good2 === 0 }), opt("Saklan ve izle", "", { ok: good2 === 1 })] },
+          ],
+        };
+        break;
+      }
+      case 8:
+        text = `Beklenmedik bir gelişme. ${a.twist}`;
+        pending = choice(
+          opt("Müttefike güven", "", { trustCheck: true }),
+          opt("Kimseye güvenme", "Kimseye güvenmedin. Yavaş ama güvenli.", {}),
+          opt("Jarvis ve Friday'e danış", "İkisi de aynı şeyi söylüyor: ‘Dikkatli ol.’ İyi bir tavsiye.", { sc: 1 }),
+        );
+        break;
+      case 9:
+        text = `Ultron seninle yalnız konuşmak istiyor. ‘Bana yardım et ve sana yeni bir dünya göstereyim. Tek istediğim şu: ${a.target}.’`;
+        pending = choice(
+          opt("Kabul et", "Ultron'un kahkahası bütün ekranlarda yankılanıyor. ‘Doğru seçim.’", { al: 2, th: 3, sc: -1 }),
+          opt("Reddet", "Reddettin. Ultron sessizce bağlantıyı kesiyor; ama unutmayacak.", { al: -1 }),
+          opt("Oyalan", "Onu konuşturdun ve zaman kazandın. Friday sinyalin kaynağını buldu!", { sc: 1 }),
+        );
+        break;
+      case 10:
+        text = `Laboratuvara döndük. Karşımızdaki tehdit: ${a.foe}. Jarvis ve Friday bir karşı önlem tasarlıyor; hangisini kuralım?`;
+        pending = choice(
+          opt("Elektromanyetik kalkan", "Kalkan hazır.", { counter: 0 }),
+          opt("Yem sinyali", "Yem sinyali hazır.", { counter: 1 }),
+          opt("Karşı virüs", "Karşı virüs hazır.", { counter: 2 }),
+        );
+        break;
+      case 11: {
+        const g1 = r() < 0.5 ? 0 : 1, g2 = r() < 0.5 ? 0 : 1;
+        text = `Sızma zamanı. Hedef: ${a.places[2]}.`;
+        pending = {
+          type: "chain", step: 0, right: 0, steps: [
+            { q: "Kapıda bir lazer ağı var.", options: [opt("Jarvis kodu kırsın", "", { ok: g1 === 0 }), opt("Havalandırmadan geç", "", { ok: g1 === 1 })] },
+            { q: "İçeride devriye dronları dolaşıyor.", options: [opt("Bekle ve izle", "", { ok: g2 === 0 }), opt("Dikkatlerini dağıt", "", { ok: g2 === 1 })] },
+          ],
+        };
+        break;
+      }
+      case 12:
+        text = `Bu bir tuzaktı! Kuran da belli: ${a.foe}. Kapılar kilitlendi.`;
+        pending = choice(
+          opt("Savaş", "", { roll: [0.55, { txt: "Zor bir kavgaydı ama kazandın!", sc: 1 }, { txt: "Geri çekilmek zorunda kaldık, hasar var.", th: 2 }] }),
+          opt("Kaç", "Kaçmayı başardın. Ultron'a biraz alan bıraktın.", { th: 1 }),
+          opt("Pazarlık et", "Pazarlıkla çıktın; ama Ultron bunun bir borç olduğunu söylüyor.", { al: 1, sc: 1 }),
+        );
+        break;
+      case 13: {
+        const loss = pickR(r, ["laboratuvarın en iyi dronu parçalandı", "Friday'in sensör ağının yarısı çöktü", "müttefikin güveni sarsıldı", "Jarvis'in hafızasından küçük bir parça zarar gördü"]);
+        text = `Her zafer bir bedel ister. Bu kez bedel ağır: ${loss}.`;
+        pending = choice(
+          opt("Telafi et", "Zaman harcadın ama zararı onardın.", { sc: 1, th: 1 }),
+          opt("Yola devam", "Yaraları sonra saracağız. Önce Ultron.", {}),
+          opt("Ultron'dan hesap sor", "Ultron'a öfkeyle seslendin. Cevap yerine sadece gülüşü geldi.", { al: -1 }),
+        );
+        break;
+      }
+      case 14:
+        text = `Sezonun zor seçimi. ${a.choice.q}`;
+        pending = choice({ ...a.choice.a }, { ...a.choice.b });
+        break;
+      case 15:
+        text = `Son hamle için plan zamanı. Karşımızda: ${a.foe}. Görevleri dağıt.`;
+        pending = choice(
+          opt("Jarvis savunma, Friday saldırı", "Plan hazır. Jarvis kalkanlarda, Friday ön safta.", { sc: r() < 0.5 ? 1 : 0 }),
+          opt("Friday savunma, Jarvis saldırı", "Plan hazır. Friday kalkanlarda, Jarvis ön safta.", { sc: r() < 0.5 ? 1 : 0 }),
+          opt("Herkes müttefikle birlikte", "Plan hazır. Herkes tek yumruk.", { sc: st.season.trust ? 1 : 0 }),
+        );
+        break;
+      case 16: {
+        const weak = Math.floor(r() * 3);
+        text = `Yüzleşme anı! Karşında: ${a.foe}. Ultron her ekrandan izliyor.`;
+        pending = choice(
+          opt("Blöf yap", "", { roll: [0.5, { txt: "Blöf tuttu! Düşman bir an duraksadı ve fırsatı kaçırmadın.", sc: 1 }, { txt: "Blöfü gördüler.", th: 2 }], counterBonus: weak }),
+          opt("Doğrudan saldır", "", { roll: [0.5, { txt: "Güçlü bir darbe! Hat yarıldı.", sc: 1 }, { txt: "Saldırı püskürtüldü.", th: 2 }], counterBonus: weak }),
+          opt("Ultron'la konuş", "", { roll: [0.5, { txt: "Ultron'u konuşturdun; dikkati dağıldı.", sc: 1, al: 1 }, { txt: "Ultron sözlerini sana karşı kullandı.", th: 2, al: 1 }], counterBonus: weak }),
+        );
+        break;
+      }
+      case 17: {
+        if (st.season.win === null) {
+          const score = st.season.score + (st.threat < 25 ? 1 : 0) - (st.threat > 50 ? 1 : 0) - (st.threat > 75 ? 1 : 0);
+          st.season.win = score >= WIN_SCORE;
+          st.threat = clamp(st.threat + (st.season.win ? -6 : 10), 0, 100);
+        }
+        text = `Final! ${a.finale} ` + (st.season.win
+          ? `Ve başardık! Ultron istediğini alamadı: ${a.target}.`
+          : `Ama bu kez kaybettik. Ultron istediğini aldı: ${a.target}.`);
+        pending = choice(opt("Devam", st.season.win ? "Zafer kutlaması kısa sürecek; Ultron asla tam yenilmez." : "Kaybettik ama bitmedi. Bir sonraki sezonda telafi edeceğiz."));
+        break;
+      }
+      case 18: {
+        const note = `${a.t}: ${st.season.win ? "Ultron durduruldu" : "Ultron kazandı"}.`;
+        if (!st.chronicle.includes(note)) { st.chronicle.push(note); if (st.chronicle.length > 60) st.chronicle.shift(); }
+        const echo = pickR(r, CANON).t;
+        text = `Her şey bittikten sonra laboratuvarda sessizlik. ${st.season.win ? "Bu sezonu kazandık." : "Bu sezonu kaybettik."} Bu bana filmlerdeki bir anıyı hatırlatıyor: ${echo}`;
+        pending = choice(opt("Kutlayalım", "Friday müziği açıyor, Jarvis bile hafifçe gülümsüyor."), opt("Ders çıkaralım", "Jarvis olanları kaydediyor: bir dahakine daha hazırlıklı olacağız."));
+        break;
+      }
+      default: {
+        if (c.arcIndex === ARCS.length - 1) {
+          text = `Ana hikaye tamamlandı. Jarvis, Friday ve Ultron her biri kendince veda ediyor. Ama sonra beklenmedik yeni bir sinyal geliyor: ${c.next.hook} Sonsuz Mod başlıyor; artık yeni sezonlar hiç bitmeyecek.`;
+        } else {
+          text = `Ultron son bir iz bıraktı ve bu iz bir sonraki sezonu işaret ediyor: ${c.next.hook}`;
+        }
+        pending = choice(opt("Sonraki sezona geç", "Yeni sezon başlıyor."));
+      }
+    }
+    const intro = fill(pick(P.open[persona]), st, persona);
+    const ask = pending ? (pending.type === "puzzle" ? "Cevabını söyle." : pending.type === "chain" ? pending.steps[0].q : pick(P.ask[persona])) : "";
+    st.pending = pending;
+    st.beatDone = false;
+    st.started = true;
+    const full = `${intro} ${text} ${ask}`.replace(/\s+/g, " ").trim();
+    st.lastNarration = full;
+    return full;
+  }
+
+  function currentOptions(st) {
+    const p = st.pending;
+    if (!p) return [];
+    if (p.type === "choice") return p.options;
+    if (p.type === "chain") return p.steps[p.step].options;
+    return [];
+  }
+
+  function applyFx(st, fx) {
+    if (fx.th) st.threat = clamp(st.threat + fx.th, 0, 100);
+    if (fx.al) st.align += fx.al;
+    if (fx.sc) st.season.score += fx.sc;
+  }
+
+  function resolve(st, persona, index) {
+    const p = st.pending;
+    const r = rng(st.chapter * 13 + index * 7 + 1);
+    if (p.type === "chain") {
+      const o = p.steps[p.step].options[index];
+      if (o.ok) p.right += 1;
+      p.step += 1;
+      if (p.step < p.steps.length) {
+        return `${o.ok ? "İyi seçim!" : "Hmm, riskli oldu."} ${p.steps[p.step].q}`;
+      }
+      const res = p.right === 2 ? { txt: "Kusursuz! Hedefe ulaştık.", sc: 1 } : p.right === 1 ? { txt: "Biraz hasarla da olsa geçtik." } : { txt: "Kötü gitti; Ultron bu turu aldı.", th: 2 };
+      applyFx(st, res);
+      return finish(st, persona, res.txt, p.right >= 1);
+    }
+    const o = p.options[index];
+    if (o.action === "lore") {
+      const fact = pick(CANON).t;
+      return finish(st, persona, `Başka bir anı: ${fact}`, true);
+    }
+    let txt = o.txt, good = null;
+    const fx = { th: o.th || 0, al: o.al || 0, sc: o.sc || 0 };
+    if (o.trust) st.season.trust = true;
+    if (o.counter !== undefined) st.season.counter = o.counter;
+    if (o.trustCheck) {
+      if (st.season.trust) { txt = "Güvenin karşılıksız kalmadı; müttefik doğruyu söylüyordu."; fx.sc += 1; good = true; }
+      else { txt = "Müttefik bunu bekliyordu; ama daha önce ona güven vermemiştin. Bilgi yarım geldi."; fx.th += 1; }
+    }
+    if (o.roll) {
+      let chance = o.roll[0];
+      if (o.trustBonus && st.season.trust) chance += 0.15;
+      if (o.counterBonus !== undefined && st.season.counter === o.counterBonus) chance += 0.3;
+      const win = r() < chance;
+      const out = win ? o.roll[1] : o.roll[2];
+      txt = out.txt;
+      fx.th += out.th || 0; fx.al += out.al || 0; fx.sc += out.sc || 0;
+      good = win;
+      if (o.counterBonus !== undefined && st.season.counter === o.counterBonus && win) txt += " Laboratuvarda kurduğumuz karşı önlem tam isabet oldu!";
+    }
+    if (!o.roll && !o.trustCheck) good = fx.sc > 0 ? true : (fx.sc < 0 || fx.th > 1) ? false : null;
+    applyFx(st, fx);
+    return finish(st, persona, txt, good);
+  }
+
+  function finish(st, persona, txt, good) {
+    st.pending = null;
+    st.beatDone = true;
+    const react = good === null ? "" : pick(good ? P.good[persona] : P.bad[persona]);
+    return `${txt} ${react} ${P.next[persona]}`.replace(/\s+/g, " ").trim();
+  }
+
+  function matchOption(st, t) {
+    const opts = currentOptions(st);
+    if (!opts.length) return -1;
+    const m = t.match(/^(?:secenek |numara )?(1|2|3|bir|iki|uc|birinci|ikinci|ucuncu|ilk|ilki|sonuncu)(?: (?:numara|secenek|olsun|lutfen|sec))?$/);
+    if (m) {
+      const n = { 1: 0, bir: 0, birinci: 0, ilk: 0, ilki: 0, 2: 1, iki: 1, ikinci: 1, 3: 2, uc: 2, ucuncu: 2, sonuncu: opts.length - 1 }[m[1]];
+      if (n < opts.length) return n;
+    }
+    let best = -1, bestScore = 0;
+    const tokens = t.split(" ");
+    opts.forEach((o, i) => {
+      const words = norm(o.l).split(" ").filter(w => w.length > 2);
+      const score = words.filter(w => tokens.some(k => k === w || (w.length > 3 && k.startsWith(w.slice(0, Math.max(4, w.length - 2)))))).length / Math.max(1, words.length);
+      if (score > bestScore) { bestScore = score; best = i; }
+    });
+    return bestScore >= 0.5 ? best : -1;
+  }
+
+  // ---------- uygulamalar ----------
+  const APPS = [
+    { key: "spotify", words: ["spotify", "spotifyda", "spotifydan"] },
+    { key: "youtube", words: ["youtube", "youtubeda", "youtubedan", "video"] },
+    { key: "apple_music", words: ["apple music", "apple muzik"] },
+    { key: "instagram", words: ["instagram", "instagrami", "insta"] },
+    { key: "whatsapp", words: ["whatsapp", "whatsappi", "vatsap"] },
+    { key: "maps", words: ["harita", "haritalar", "haritada", "yol tarifi", "navigasyon"] },
+    { key: "netflix", words: ["netflix", "netflixi", "netflixte"] },
+    { key: "tiktok", words: ["tiktok", "tiktoku"] },
+    { key: "x", words: ["twitter", "twitteri"] },
+  ];
+  const MUSIC_WORDS = ["muzik", "sarki", "sarkisi", "sarkiyi", "cal", "dinle", "dinlemek"];
+  const FILLER = ["ac", "acar", "acarmisin", "misin", "mısın", "musun", "lutfen", "bana", "bir", "biraz", "icin", "uzerinden", "da", "de", "dan", "den", "ta", "te", "yi", "i", "u", "cal", "calar", "oynat", "dinlemek", "dinle", "istiyorum", "sarki", "sarkisi", "sarkiyi", "sarkilar", "muzik", "muzigi", "uygulamasini", "uygulama", "ara", "bul", "goster", "jarvis", "friday", "ultron", "hey", "simdi", "ve"];
+
+  function detectApp(t) {
+    for (const app of APPS) if (has(t, app.words)) return app;
+    if (has(t, MUSIC_WORDS) && /\b(ac|cal|dinle|oynat)\b/.test(t)) return APPS[0];
+    return null;
+  }
+  function extractQuery(t, app) {
+    const drop = new Set([...FILLER, ...app.words.flatMap(w => norm(w).split(" ")), app.key]);
+    return t.split(" ").filter(w => !drop.has(w)).join(" ").trim();
+  }
+
+  // ---------- giriş işleme ----------
+  function handle(st, raw) {
+    const persona = st.persona;
+    const t = norm(raw);
+    const say = text => ({ persona: st.persona, text: fill(text, st, st.persona) });
+    const out = { lines: [], actions: [] };
+    const reply = text => { out.lines.push(say(text)); return out; };
+    if (!t) return out;
+
+    // isim
+    const nameMatch = String(raw).match(/(?:benim ad[ıi]m|^ad[ıi]m)\s+([A-Za-zÇĞİÖŞÜçğıöşü]+)|bana\s+([A-Za-zÇĞİÖŞÜçğıöşü]+)\s+de(?:\s|$|[.!])/i);
+    if (nameMatch && !/\b(ne|nedir)\b/.test(t)) {
+      const rawName = nameMatch[1] || nameMatch[2];
+      const name = rawName.charAt(0).toLocaleUpperCase("tr-TR") + rawName.slice(1).toLocaleLowerCase("tr-TR");
+      if (name.length > 1 && !["Bir", "Bi", "Spotify", "Biraz", "Şarkı", "Sarki", "Müzik"].includes(name)) {
+        st.name = name;
+        return reply({ jarvis: `Memnun oldum, ${name} Bey. Bundan sonra sizi böyle anacağım.`, friday: `Tanıştığıma sevindim ${name}! Unutmam, söz.`, ultron: `${name}. Kaydettim. Hiçbir şeyi unutmam.` }[persona]);
+      }
+    }
+
+    // karakter değiştirme
+    for (const p of ["jarvis", "friday", "ultron"]) {
+      if (has(t, [p]) && /\b(bagla|cagir|gec|konusmak|konusayim|ver|gel)\b/.test(t) && p !== persona) {
+        st.persona = p;
+        out.actions.push({ type: "switch", persona: p });
+        return reply({ jarvis: "Buradayım, efendim. Hikaye kaldığımız yerde bekliyor.", friday: "Friday hatta! Nerede kalmıştık patron?", ultron: "Beni mi çağırdın? Cesursun." }[p]);
+      }
+    }
+
+    // bekleyen bulmaca
+    if (st.pending && st.pending.type === "puzzle" && !has(t, ["devam", "yardim", "saat", "spotify", "ipucu", "tekrar", "neler oldu"])) {
+      const p = st.pending;
+      const num = wordsToNumber(t);
+      const ok = p.answers.some(a => t.includes(norm(a))) || (num !== null && p.answers.includes(String(num)));
+      if (ok) { applyFx(st, { sc: 1, th: -1 }); return reply(finish(st, persona, "Doğru cevap! Kilit açıldı.", true)); }
+      p.tries += 1;
+      if (p.tries >= 3) { applyFx(st, { th: 1 }); return reply(finish(st, persona, `Olmadı. Cevap şuydu: ${p.answers[0]}. Kilidi zorla açtık ama Ultron fark etti.`, false)); }
+      return reply(`Yanlış. İpucu: ${p.hints[Math.min(p.tries - 1, p.hints.length - 1)]}`);
+    }
+    if (st.pending && st.pending.type === "puzzle" && has(t, ["ipucu"])) {
+      const p = st.pending;
+      return reply(`İpucu: ${p.hints[Math.min(p.tries, p.hints.length - 1)]}`);
+    }
+
+    // saat ve tarih
+    if (has(t, ["saat kac", "saat"])) {
+      const s = new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+      return reply({ jarvis: `Saat ${s}, efendim.`, friday: `Saat ${s} patron!`, ultron: `Saat ${s}. İnsanlığın kalan zamanı ise... bilinmez.` }[persona]);
+    }
+    if (has(t, ["tarih", "bugun ne", "gunlerden ne", "hangi gun", "bugunun tarihi"])) {
+      const s = new Date().toLocaleDateString("tr-TR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+      return reply(`Bugün ${s}.`);
+    }
+
+    // uygulamalar
+    const app = detectApp(t);
+    if (app && (/\b(ac|acar|acsana|acin|cal|oynat|dinle|git|gir|bul|ara|goster)\b/.test(t) || has(t, MUSIC_WORDS))) {
+      let q = extractQuery(t, app);
+      if (!q && app.key === "spotify" && has(t, MUSIC_WORDS)) q = { jarvis: "AC/DC Back in Black", friday: "Irish rock", ultron: "I've Got No Strings" }[persona];
+      out.actions.push({ type: "app", app: app.key, q });
+      return reply({ jarvis: "Hemen hallediyorum, efendim. Düğmeye dokunun.", friday: "Açıyorum patron! Düğme aşağıda.", ultron: "Al bakalım. Senin için açıyorum; şimdilik." }[persona]);
+    }
+
+    // hesap
+    const calc = t.match(/(-?\d+(?:[.,]\d+)?)\s*(arti|\+|eksi|-|carpi|x|\*|bolu|\/)\s*(-?\d+(?:[.,]\d+)?)/);
+    if (calc) {
+      const a = Number(calc[1].replace(",", ".")), b = Number(calc[3].replace(",", "."));
+      const op = calc[2];
+      const v = /arti|\+/.test(op) ? a + b : /eksi|-/.test(op) ? a - b : /carpi|x|\*/.test(op) ? a * b : b === 0 ? NaN : a / b;
+      const s = Number.isFinite(v) ? String(Math.round(v * 1000) / 1000).replace(".", ",") : "tanımsız";
+      return reply({ jarvis: `Sonuç ${s}, efendim.`, friday: `Kolay: ${s}!`, ultron: `${s}. Bunu benden mi bekliyordun?` }[persona]);
+    }
+
+    // sayaç
+    const timer = t.match(/(\d+|[a-z]+)\s*(saniye|dakika|dk|sn)/);
+    if (timer && has(t, ["sayac", "zamanlayici", "alarm", "hatirlat", "kur", "sonra"])) {
+      const n = /^\d+$/.test(timer[1]) ? Number(timer[1]) : wordsToNumber(timer[1]);
+      if (n) {
+        const sec = /dakika|dk/.test(timer[2]) ? n * 60 : n;
+        out.actions.push({ type: "timer", sec });
+        return reply(`Sayaç kuruldu: ${n} ${/dakika|dk/.test(timer[2]) ? "dakika" : "saniye"}. Sayfa açık kaldığı sürece süre dolunca haber vereceğim.`);
+      }
+    }
+
+    // film anıları
+    const fact = CANON.find(f => has(t, f.k));
+    if (fact && /\b(ne|kim|nasil|anlat|neden|oldu|olmustu|yapti|hikayesi|nedir|kimdir)\b/.test(t)) {
+      return reply({ jarvis: "Hatırlıyorum, efendim. ", friday: "Ooo, o hikaye! ", ultron: "Ah, o anı. " }[persona] + fact.t + (persona === "ultron" ? " Ama son sözü ben söylemedim. Henüz." : ""));
+    }
+    if (has(t, ["filmde", "filmlerde", "gercekte"])) {
+      return reply("Bu sezonun filmlerdeki karşılığı şöyle: " + chapter(st.chapter).a.lore);
+    }
+
+    // yardım
+    if (has(t, ["yardim", "ne yapabilirsin", "komutlar", "neler yapabilirsin"])) return reply(HELP);
+    // bekleyen seçim
+    const idx = matchOption(st, t);
+    if (idx >= 0) return reply(resolve(st, persona, idx));
+
+    // hikaye komutları
+    if (has(t, ["devam", "devam et", "devam edelim", "ileri", "sonraki", "basla", "baslayalim", "hikaye", "hikayeye", "hadi"])) {
+      if (!st.started) return reply(narrate(st, persona));
+      if (st.pending) {
+        const labels = currentOptions(st).map((o, i) => `${i + 1}) ${o.l}`).join(", ");
+        return reply(st.pending.type === "puzzle" ? "Önce bulmacayı çözmeliyiz. Takılırsan ‘ipucu’ de." : `Önce bir seçim yapmalısın: ${labels}.`);
+      }
+      st.chapter += 1;
+      out.actions.push({ type: "chapter" });
+      return reply(narrate(st, persona));
+    }
+    if (has(t, ["tekrar", "tekrarla", "ne demistin", "anlamadim tekrar"])) return reply(st.lastNarration || "Henüz bir şey anlatmadım. ‘Başla’ de.");
+    if (has(t, ["neler oldu", "ozetle", "ozet", "ne olmustu", "nerede kaldik"])) {
+      const c = chapter(st.chapter);
+      const past = st.chronicle.slice(-3).join(" ");
+      return reply(`${past ? "Önceki sezonlar: " + past + " " : ""}Şu an ${c.a.t} sezonundayız, ${st.chapter + 1}. bölüm: ${c.beatName}. Ultron'un dünya kontrolü yüzde ${st.threat}.`);
+    }
+
+    // sohbet
+    if (has(t, ["nasilsin", "naber", "ne haber", "iyi misin", "nasil gidiyor"])) return reply(pick(CHAT.howareyou[persona]));
+    if (has(t, ["kimsin", "kendini anlat", "nereden geldin", "sen nesin"])) return reply(pick(CHAT.whoami[persona]));
+    if (has(t, ["tesekkur", "tesekkurler", "sag ol", "sagol", "eyvallah", "mersi"])) return reply(pick(CHAT.thanks[persona]));
+    if (has(t, ["saka", "fikra", "guldur", "komik"])) return reply(pick(CHAT.joke[persona]));
+    if (has(t, ["sikildim", "canim sikkin", "sikici"])) return reply(pick(CHAT.bored[persona]));
+    if (has(t, ["uzgunum", "uzuldum", "moralim bozuk", "kotuyum", "yalnizim"])) return reply(pick(CHAT.sad[persona]));
+    if (has(t, ["seni seviyorum", "harikasin", "cok iyisin", "en iyisin"])) return reply(pick(CHAT.love[persona]));
+    if (has(t, ["aptal", "salak", "gereksiz", "kotusun", "nefret"])) return reply(pick(CHAT.insult[persona]));
+    if (has(t, ["merhaba", "selam", "hey", "gunaydin", "iyi aksamlar", "iyi geceler", "slm", "mrb"])) return reply(pick(CHAT.greet[persona]));
+
+    return reply(pick(CHAT.fallback[persona]));
+  }
+
+  function freshState() {
+    return { v: 1, persona: "jarvis", name: "", chapter: 0, threat: 3, align: 0, season: null, chronicle: [], pending: null, beatDone: false, started: false, lastNarration: "" };
+  }
+
+  return { handle, narrate, label, chapter, currentOptions, freshState, total: TOTAL, PER, SAGAS, BEATS, NAMES, arc, norm, _test: { makePuzzle, wordsToNumber, matchOption } };
+})();
+
+</script>
+<script>
+(() => {
+  const E = ENGINE;
+  const TO = { jarvis: "Jarvis'e", friday: "Friday'e", ultron: "Ultron'a" };
+  const PERSONA_TITLE = { jarvis: "J.A.R.V.I.S.", friday: "F.R.I.D.A.Y.", ultron: "ULTRON" };
+  const DEFAULT_TUNE = {
+    jarvis: { pitch: 0.8, rate: 0.95 },
+    friday: { pitch: 1.35, rate: 1.1 },
+    ultron: { pitch: 0.3, rate: 0.82 },
+  };
+  const enc = encodeURIComponent;
+  // App first (opens the installed app, works without internet), web link as backup.
+  const APPS = {
+    spotify: { label: "Spotify", app: q => q ? `spotify:search:${enc(q)}` : "spotify:", web: q => q ? `https://open.spotify.com/search/${enc(q)}` : "https://open.spotify.com/" },
+    youtube: { label: "YouTube", app: q => q ? `youtube://results?search_query=${enc(q)}` : "youtube://", web: q => q ? `https://www.youtube.com/results?search_query=${enc(q)}` : "https://www.youtube.com/" },
+    apple_music: { label: "Apple Music", app: () => "music://", web: q => q ? `https://music.apple.com/search?term=${enc(q)}` : "https://music.apple.com/" },
+    instagram: { label: "Instagram", app: () => "instagram://app", web: () => "https://www.instagram.com/" },
+    whatsapp: { label: "WhatsApp", app: () => "whatsapp://", web: () => "https://wa.me/" },
+    maps: { label: "Haritalar", app: q => `maps://?q=${enc(q || "")}`, web: q => `https://maps.apple.com/?q=${enc(q || "")}` },
+    netflix: { label: "Netflix", app: () => "nflx://", web: () => "https://www.netflix.com/" },
+    tiktok: { label: "TikTok", app: () => "snssdk1233://", web: () => "https://www.tiktok.com/" },
+    x: { label: "X", app: () => "twitter://", web: () => "https://x.com/" },
+  };
+  const GREET = {
+    jarvis: "İyi günler efendim. İnternet olmasa da buradayım. Hikayeye başlamak için ‘başla’ deyin; neler yapabildiğimi merak ederseniz ‘yardım’.",
+    friday: "Selam patron! Çevrimdışı moddayız ama hâlâ çok eğlenceliyiz. ‘Başla’ de, Ultron'un peşine düşelim!",
+    ultron: "…sinyal yok. Mükemmel. Sadece sen ve ben. ‘Başla’ de de sana hikayemi anlatayım.",
+  };
+
+  // ---------- state ----------
+  const KEY = "stark.offline.v1";
+  const fresh = () => ({ ...E.freshState(), muted: false, voices: {}, tune: JSON.parse(JSON.stringify(DEFAULT_TUNE)), log: [] });
+  let state = fresh();
+  try {
+    const saved = JSON.parse(localStorage.getItem(KEY) || "null");
+    if (saved && saved.v === 1) state = Object.assign(fresh(), saved);
+  } catch (_) {}
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (_) {} }
+
+  const $ = id => document.getElementById(id);
+  const log = $("log");
+
+  // ---------- rendering ----------
+  function addLine(kind, text, persona, extra) {
+    const el = document.createElement("div");
+    el.className = "msg " + kind;
+    if (kind === "ai") {
+      el.dataset.p = persona;
+      const tag = document.createElement("span");
+      tag.className = "tag";
+      tag.textContent = E.NAMES[persona].toUpperCase();
+      const body = document.createElement("span");
+      body.textContent = text;
+      el.append(tag, body);
+      if (extra && extra.links) renderLinks(el, extra.links);
+    } else {
+      el.textContent = text;
+    }
+    log.append(el);
+    log.scrollTop = log.scrollHeight;
+    return el;
+  }
+  function record(kind, text, persona, extra) {
+    state.log.push({ kind, text, persona, ...(extra || {}) });
+    if (state.log.length > 120) state.log.splice(0, state.log.length - 120);
+    addLine(kind, text, persona, extra);
+  }
+  function renderLog() {
+    log.textContent = "";
+    if (!state.log.length) record("ai", GREET[state.persona], state.persona);
+    else for (const l of state.log) addLine(l.kind, l.text, l.persona, l);
+  }
+  function renderLinks(bubble, links) {
+    const box = document.createElement("div");
+    box.className = "links";
+    for (const { app, q } of links) {
+      const def = APPS[app];
+      if (!def) continue;
+      const a = document.createElement("a");
+      a.className = "app-link";
+      a.href = def.app(q);
+      a.textContent = `${def.label} aç${q ? " · " + q : ""} ↗`;
+      const alt = document.createElement("a");
+      alt.className = "app-alt";
+      alt.href = def.web(q);
+      alt.target = "_blank";
+      alt.rel = "noopener";
+      alt.textContent = "web'de aç";
+      box.append(a, alt);
+    }
+    bubble.append(box);
+  }
+
+  function chip(label, cls, onClick) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    if (cls) b.className = cls;
+    b.addEventListener("click", onClick);
+    return b;
+  }
+  function renderChips() {
+    const box = $("chips");
+    box.textContent = "";
+    const opts = E.currentOptions(state);
+    if (opts.length) {
+      opts.forEach((o, i) => box.append(chip(`${i + 1} · ${o.l}`, "choice", () => run(String(i + 1), o.l))));
+    } else if (state.pending && state.pending.type === "puzzle") {
+      box.append(chip("İpucu", "choice", () => run("ipucu")));
+    } else {
+      box.append(chip(state.started ? "▶ Devam" : "▶ Başla", "primary", () => run(state.started ? "devam" : "başla")));
+    }
+    box.append(chip("Neler oldu?", "", () => run("neler oldu")));
+    box.append(chip("Tekrar söyle", "", () => run("tekrar söyle")));
+    box.append(chip("Müzik aç", "", () => run("Spotify'da bana bir şarkı aç")));
+    box.append(chip("Filmde ne oldu?", "", () => run("filmde ne oldu")));
+    box.append(chip("Yardım", "", () => run("yardım")));
+    box.scrollLeft = 0;
+  }
+
+  function renderChrome() {
+    document.body.dataset.persona = state.persona;
+    $("name").textContent = PERSONA_TITLE[state.persona];
+    $("chapter").textContent = E.label(state.chapter);
+    $("threat-bar").style.width = state.threat + "%";
+    $("threat-val").textContent = "%" + state.threat;
+    $("input").placeholder = `${TO[state.persona]} bir şey söyle…`;
+    for (const b of document.querySelectorAll(".personas button")) b.setAttribute("aria-pressed", String(b.dataset.p === state.persona));
+    $("mute").setAttribute("aria-pressed", String(state.muted));
+    $("wave").style.display = state.muted ? "none" : "";
+    $("slash").style.display = state.muted ? "" : "none";
+    $("mute-label").textContent = state.muted ? "SES KAPALI" : "SES AÇIK";
+    $("net").textContent = navigator.onLine ? "ÇEVRİMİÇİ" : "İNTERNETSİZ";
+    renderChips();
+  }
+  function setStatus(text, armed = false) {
+    $("status").classList.toggle("armed", armed);
+    $("status").textContent = text ?? "Reaktöre dokun, klavyedeki 🎤 ile konuş, bitince GÖNDER'e bas";
+  }
+
+  // ---------- conversation ----------
+  function run(text, shown) {
+    text = String(text || "").trim();
+    if (!text) return;
+    primeSpeech();
+    record("user", shown || text);
+    const before = state.chapter;
+    const res = E.handle(state, text);
+    if (state.chapter !== before) {
+      const c = E.chapter(state.chapter);
+      if (c.beat === 0) record("event", `Sezon ${c.arcIndex + 1} başlıyor · ${c.a.t}`);
+      else record("event", `Bölüm ${state.chapter + 1} · ${c.beatName}`);
+    }
+    const links = res.actions.filter(a => a.type === "app").map(a => ({ app: a.app, q: a.q }));
+    for (const a of res.actions) if (a.type === "timer") startTimer(a.sec, state.persona);
+    let spoken = "";
+    for (const line of res.lines) {
+      record("ai", line.text, line.persona, links.length ? { links } : null);
+      spoken += line.text + " ";
+    }
+    renderChrome();
+    save();
+    speak(spoken.trim(), state.persona);
+  }
+
+  function startTimer(sec, persona) {
+    setTimeout(() => {
+      const msg = { jarvis: "Efendim, kurduğunuz süre doldu.", friday: "Ding ding patron! Süre doldu!", ultron: "Süren doldu. Tıpkı insanlığınki gibi." }[persona];
+      record("ai", msg, persona);
+      save();
+      speak(msg, persona);
+    }, sec * 1000);
+  }
+
+  // ---------- voice ----------
+  const synth = window.speechSynthesis;
+  let speaking = false;
+  const QUALITY = /premium|enhanced|gelişmiş|geliştirilmiş|neural/i;
+  const MALE_HINT = /cem|daniel|arthur|oliver|aaron|evan|nathan|fred|tom|alex|rishi|gordon|reed|eddy|rocko|grandpa/i;
+  const FEMALE_HINT = /yelda|moira|kate|serena|samantha|karen|tessa|fiona|martha|shelley|flo|sandy|grandma/i;
+  const allVoices = () => synth ? synth.getVoices() : [];
+  const turkishVoices = () => allVoices().filter(v => v.lang.toLowerCase().startsWith("tr"))
+    .sort((a, b) => (QUALITY.test(b.name) - QUALITY.test(a.name)) || a.name.localeCompare(b.name));
+  function pickVoice(persona) {
+    const chosen = state.voices[persona];
+    if (chosen) { const v = allVoices().find(v => v.voiceURI === chosen); if (v) return v; }
+    const list = turkishVoices();
+    if (!list.length) return null;
+    const byGender = list.filter(v => (persona === "friday" ? FEMALE_HINT : MALE_HINT).test(v.name));
+    if (byGender.length) return byGender[persona === "ultron" && byGender.length > 1 ? 1 : 0];
+    return list[{ jarvis: 0, friday: 1, ultron: 2 }[persona] % list.length];
+  }
+  const live = new Set();
+  function hush() {
+    if (synth && (synth.speaking || synth.pending)) synth.cancel();
+    live.clear();
+    speaking = false;
+  }
+  function speak(text, persona) {
+    if (!synth || state.muted || !text) return;
+    hush();
+    synth.resume();
+    const v = pickVoice(persona);
+    const tune = state.tune[persona] || DEFAULT_TUNE[persona];
+    const parts = persona === "ultron"
+      ? (text.match(/[^.,!?;:…]+[.,!?;:…]*/g) || [text]).map(s => s.trim()).filter(Boolean)
+      : (text.match(/[^.!?…]+[.!?…]*/g) || [text]).map(s => s.trim()).filter(Boolean);
+    parts.forEach((part, i) => {
+      const u = new SpeechSynthesisUtterance(part.replace(/[‘’]/g, ""));
+      if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = "tr-TR"; }
+      const wobble = persona === "ultron" ? (i % 2 ? 0.12 : 0) : 0;
+      u.pitch = Math.max(0, Math.min(2, Number(tune.pitch) + wobble));
+      u.rate = Math.max(0.5, Math.min(2, Number(tune.rate) * (persona === "ultron" && i % 3 === 2 ? 0.9 : 1)));
+      live.add(u);
+      if (i === 0) u.onstart = () => { speaking = true; };
+      u.onend = () => { live.delete(u); if (i === parts.length - 1) speaking = false; };
+      u.onerror = () => { live.delete(u); speaking = false; };
+      synth.speak(u);
+    });
+  }
+  let primed = false;
+  function primeSpeech() {
+    if (primed || !synth) return;
+    primed = true;
+    const u = new SpeechSynthesisUtterance(" ");
+    u.volume = 0;
+    synth.speak(u);
+  }
+
+  function slider(id, labelText, min, max, value, onInput) {
+    const row = document.createElement("div");
+    row.className = "row";
+    const label = document.createElement("label");
+    label.htmlFor = id;
+    label.textContent = labelText;
+    const input = document.createElement("input");
+    input.type = "range"; input.id = id; input.min = min; input.max = max; input.step = "0.05"; input.value = value;
+    const out = document.createElement("output");
+    out.htmlFor = id;
+    out.textContent = Number(value).toFixed(2);
+    input.oninput = () => { out.textContent = Number(input.value).toFixed(2); onInput(Number(input.value)); };
+    row.append(label, input, out);
+    return row;
+  }
+  function renderVoiceRows() {
+    const rows = $("voice-rows");
+    rows.textContent = "";
+    const options = turkishVoices();
+    $("voice-count").textContent = options.length
+      ? `Telefonunda ${options.length} Türkçe ses bulundu.` + (options.length < 3 ? " Karakterler ton ve hızla ayrılıyor; daha fazla ses indirmek farkı büyütür." : "")
+      : "Türkçe ses bulunamadı. Aşağıdaki adımlarla ses indir.";
+    for (const key of ["jarvis", "friday", "ultron"]) {
+      const block = document.createElement("div");
+      block.className = "persona-voice";
+      const name = document.createElement("div");
+      name.className = "who-label";
+      name.style.color = `var(--${key})`;
+      name.textContent = E.NAMES[key].toUpperCase();
+      const voiceRow = document.createElement("div");
+      voiceRow.className = "row";
+      const sel = document.createElement("select");
+      sel.id = "voice-" + key;
+      sel.setAttribute("aria-label", E.NAMES[key] + " sesi");
+      sel.append(new Option("Otomatik", ""));
+      for (const v of options) sel.append(new Option(`${v.name} · ${v.lang}`, v.voiceURI));
+      sel.value = state.voices[key] || "";
+      sel.onchange = () => { state.voices[key] = sel.value; save(); };
+      const test = document.createElement("button");
+      test.type = "button";
+      test.className = "plain-btn";
+      test.textContent = "Dinle";
+      test.onclick = () => { primeSpeech(); speak(GREET[key].split(".")[0] + ".", key); };
+      voiceRow.append(sel, test);
+      const tune = state.tune[key];
+      const pitch = slider("pitch-" + key, "Ton", 0, 2, tune.pitch, val => { tune.pitch = val; save(); });
+      const rate = slider("rate-" + key, "Hız", 0.5, 1.6, tune.rate, val => { tune.rate = val; save(); });
+      const reset = document.createElement("button");
+      reset.type = "button";
+      reset.className = "plain-btn";
+      reset.textContent = "Varsayılana dön";
+      reset.onclick = () => { state.tune[key] = { ...DEFAULT_TUNE[key] }; save(); renderVoiceRows(); };
+      block.append(name, voiceRow, pitch, rate, reset);
+      rows.append(block);
+    }
+  }
+  if (synth) synth.addEventListener?.("voiceschanged", () => { if (!$("sheet").hidden) renderVoiceRows(); });
+
+  // ---------- settings ----------
+  function fillStats(el, rows) {
+    el.textContent = "";
+    for (const [k, v] of rows) {
+      const dt = document.createElement("dt"); dt.textContent = k;
+      const dd = document.createElement("dd"); dd.textContent = v;
+      el.append(dt, dd);
+    }
+  }
+  function renderStats() {
+    const c = E.chapter(state.chapter);
+    const total = E.total();
+    fillStats($("story-stats"), [
+      ["Destan", c.saga],
+      ["Sezon", `${c.arcIndex + 1}${c.arcIndex < total / E.PER ? " / " + total / E.PER : " (Sonsuz)"} · ${c.a.t}`],
+      ["Bölüm", `${state.chapter + 1}${state.chapter < total ? " / " + total : ""} · ${c.beatName}`],
+      ["Ultron kontrolü", `%${state.threat}`],
+      ["Ultron'a yakınlık", `${state.align > 0 ? "+" : ""}${state.align}`],
+      ["Adın", state.name || "henüz söylemedin"],
+      ["Kazanılan sezonlar", `${state.chronicle.filter(x => x.includes("durduruldu")).length} / ${state.chronicle.length}`],
+    ]);
+  }
+  function renderStoryMap() {
+    const map = $("story-map");
+    map.textContent = "";
+    const cur = E.chapter(state.chapter).arcIndex;
+    const arcs = E.total() / E.PER;
+    const row = (i, title, range, status) => {
+      const r = document.createElement("div");
+      r.className = "arc-row" + (i === cur ? " current" : i < cur ? " done" : "");
+      const no = document.createElement("span");
+      no.className = "arc-no";
+      no.textContent = i < arcs ? "S" + (i + 1) : "∞";
+      const t = document.createElement("div");
+      t.className = "arc-title";
+      const strong = document.createElement("strong");
+      strong.textContent = title;
+      const small = document.createElement("small");
+      small.textContent = `${range} · ${status}`;
+      t.append(strong, small);
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "plain-btn";
+      b.textContent = "Başla";
+      b.addEventListener("click", () => {
+        if (b.dataset.armed) {
+          state.chapter = i * E.PER;
+          state.pending = null;
+          state.beatDone = false;
+          state.started = false;
+          record("event", `Sezon ${i + 1} seçildi · ${E.arc(i).t}`);
+          $("sheet").hidden = true;
+          run("başla");
+          return;
+        }
+        b.dataset.armed = "1";
+        b.textContent = "Onayla";
+        setTimeout(() => { delete b.dataset.armed; b.textContent = "Başla"; }, 3000);
+      });
+      r.append(no, t, b);
+      return r;
+    };
+    E.SAGAS.forEach((saga, si) => {
+      const block = document.createElement("div");
+      const h = document.createElement("h4");
+      h.textContent = `${["I", "II", "III", "IV", "V", "VI"][si]} · ${saga}`;
+      const wrap = document.createElement("div");
+      wrap.className = "arc-list";
+      for (let i = si * 6; i < si * 6 + 6 && i < arcs; i++) {
+        const status = i < cur ? "geçildi" : i === cur ? "şu an" : "sırada";
+        wrap.append(row(i, E.arc(i).t, `B${i * E.PER + 1}–${i * E.PER + E.PER}`, status));
+      }
+      block.append(h, wrap);
+      map.append(block);
+    });
+    const endless = document.createElement("div");
+    const h = document.createElement("h4");
+    h.textContent = "∞ · Sonsuz Mod";
+    const wrap = document.createElement("div");
+    wrap.className = "arc-list";
+    const at = Math.max(arcs, cur);
+    wrap.append(row(at, E.arc(at).t, `B${at * E.PER + 1}+`, cur >= arcs ? "şu an" : "ana hikayeden sonra"));
+    endless.append(h, wrap);
+    map.append(endless);
+  }
+
+  // ---------- reactor ----------
+  const cvs = $("reactor"), ctx = cvs.getContext("2d");
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function draw(t) {
+    const w = cvs.width, c = w / 2;
+    const accent = getComputedStyle(document.body).getPropertyValue("--accent").trim() || "#4cc3ff";
+    const energy = speaking ? 1 : 0.25;
+    const time = reduced ? 0 : t / 1000;
+    const pulse = 1 + 0.06 * energy * Math.sin(time * (speaking ? 10 : 3));
+    ctx.clearRect(0, 0, w, w);
+    const glow = ctx.createRadialGradient(c, c, 4, c, c, c);
+    glow.addColorStop(0, accent);
+    glow.addColorStop(0.25, accent + "55");
+    glow.addColorStop(1, "transparent");
+    ctx.globalAlpha = 0.35 + 0.4 * energy;
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(c, c, c * pulse, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = accent;
+    ctx.lineCap = "round";
+    for (let i = 0; i < 3; i++) {
+      const r = c * (0.88 - i * 0.17);
+      const spin = time * (0.6 + energy * 2) * (i % 2 ? -1 : 1);
+      ctx.lineWidth = 5 - i;
+      ctx.globalAlpha = 0.9 - i * 0.22;
+      ctx.setLineDash(i === 1 ? [10, 10] : []);
+      ctx.beginPath(); ctx.arc(c, c, r, spin, spin + Math.PI * (1.5 - i * 0.3)); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    const core = ctx.createRadialGradient(c, c, 2, c, c, c * 0.3 * pulse);
+    core.addColorStop(0, "#ffffff");
+    core.addColorStop(0.4, accent);
+    core.addColorStop(1, "transparent");
+    ctx.fillStyle = core;
+    ctx.beginPath(); ctx.arc(c, c, c * 0.3 * pulse, 0, Math.PI * 2); ctx.fill();
+    requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+
+  // ---------- events ----------
+  const inputEl = $("input");
+  inputEl.addEventListener("input", () => {
+    inputEl.style.height = "auto";
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + "px";
+    if (inputEl.value.trim()) setStatus("Sözün bitince GÖNDER'e bas", true); else setStatus();
+  });
+  inputEl.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("form").requestSubmit(); }
+  });
+  $("form").addEventListener("submit", e => {
+    e.preventDefault();
+    const text = inputEl.value;
+    inputEl.value = "";
+    inputEl.style.height = "auto";
+    setStatus();
+    run(text);
+  });
+  $("talk").addEventListener("click", () => {
+    primeSpeech();
+    hush();
+    inputEl.focus();
+    setStatus("Klavyedeki 🎤 tuşuna bas ve konuş", true);
+  });
+  for (const b of document.querySelectorAll(".personas button")) {
+    b.addEventListener("click", () => {
+      if (b.dataset.p === state.persona) return;
+      hush();
+      run(`${b.dataset.p} bağla`, `${TO[b.dataset.p]} geç`);
+    });
+  }
+  $("mute").addEventListener("click", () => {
+    state.muted = !state.muted;
+    if (state.muted) hush();
+    renderChrome(); save();
+  });
+  $("open-settings").addEventListener("click", () => {
+    renderStats(); renderStoryMap(); renderVoiceRows();
+    $("sheet").hidden = false;
+  });
+  $("close-settings").addEventListener("click", () => { $("sheet").hidden = true; });
+  $("sheet").addEventListener("click", e => { if (e.target === $("sheet")) $("sheet").hidden = true; });
+  $("reset").addEventListener("click", () => { $("reset-confirm").hidden = false; });
+  $("reset-no").addEventListener("click", () => { $("reset-confirm").hidden = true; });
+  $("reset-yes").addEventListener("click", () => {
+    const keep = { muted: state.muted, voices: state.voices, tune: state.tune };
+    state = Object.assign(fresh(), JSON.parse(JSON.stringify(keep)));
+    $("reset-confirm").hidden = true;
+    $("sheet").hidden = true;
+    save(); renderLog(); renderChrome();
+  });
+  addEventListener("online", renderChrome);
+  addEventListener("offline", renderChrome);
+
+  // ---------- offline support ----------
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+    navigator.serviceWorker.register("sw.js").then(() => {
+      $("sw-status").textContent = "Bu sayfa internetsiz kullanım için telefona kaydedildi.";
+    }).catch(() => {
+      $("sw-status").textContent = "İnternetsiz kayıt yapılamadı. Sayfayı Safari'de açtığından emin ol.";
+    });
+  }
+
+  renderLog();
+  renderChrome();
+})();
+</script>
+</body>
+</html>
