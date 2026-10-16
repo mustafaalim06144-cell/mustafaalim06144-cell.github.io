@@ -366,7 +366,7 @@ function tex(c, srgb, rep) { const t = new THREE.CanvasTexture(c); if (srgb) t.e
 
 /* ================= save ================= */
 const SAVE_KEY = 'ag-sehri-v1';
-const save = { xp: 0, level: 1, hero: 'peter', suit: { peter: 'advanced', miles: 'miles' }, bags: [], crimes: 0, bosses: 0, best: 0, muted: false, time: 'dusk', quality: IS_TOUCH ? 'mid' : 'high', music: 'b0', vol: 0.55, money: 250, carry: 0, delivered: 0 };
+const save = { xp: 0, level: 1, hero: 'peter', suit: { peter: 'advanced', miles: 'miles' }, bags: [], crimes: 0, bosses: 0, best: 0, muted: false, time: 'dusk', quality: IS_TOUCH ? 'mid' : 'high', music: 'b0', vol: 0.55, money: 2500, carry: 0, delivered: 0 };
 try { const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); if (s) Object.assign(save, s); } catch (e) {}
 if (!save.suit || typeof save.suit !== 'object') save.suit = { peter: 'advanced', miles: 'miles' };
 if (!save.suit.tony) save.suit.tony = 'mk3';
@@ -473,6 +473,7 @@ function resize() {
   if (typeof sizePost === 'function') sizePost();
 }
 addEventListener('resize', resize);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && typeof AC !== 'undefined' && AC && AC.state !== 'running') { try { AC.resume(); } catch (e) {} } });
 addEventListener('resize', () => { if (typeof MV !== 'undefined' && MV.open) sizeMap(); });
 let composer = null, bloomPass = null, renderPass = null;
 const FinalShader = {
@@ -1681,9 +1682,8 @@ function audioInit() {
       const src2 = AC.createBufferSource(); src2.buffer = buf; src2.loop = true; const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1400; jetGain = AC.createGain(); jetGain.gain.value = 0; src2.connect(lp); lp.connect(jetGain); jetGain.connect(sfxGain); src2.start(0, 0.7);
     } catch (e) { AC = null; }
   }
-  if (AC && AC.state === 'suspended') AC.resume();
+  if (AC && AC.state !== 'running') { try { AC.resume(); } catch (e) {} }
   // with in-game music off the player may be listening to Spotify: mix with it instead of interrupting it
-  try { if (navigator.audioSession && (!save.music || save.music === 'off')) navigator.audioSession.type = 'ambient'; } catch (e) {}
 }
 function noise(dur, type, freq, vol, q = 1, dest, t0) {
   if (!AC) return; const t = t0 || AC.currentTime, s = AC.createBufferSource(); s.buffer = AC._noise;
@@ -1811,7 +1811,7 @@ const Music = (() => {
   function select(id) {
     Radio.on = false;
     if (id === 'radio') { playBuilt('b1'); current = 'radio'; Radio.on = true; Radio.t = 3; }
-    else if (id === 'off') { stopAll(); current = 'off'; setSession('ambient'); }
+    else if (id === 'off') { stopAll(); current = 'off'; setSession('auto'); }
     else if (id.startsWith('u:')) playUser(id.slice(2));
     else playBuilt(id);
     save.music = current; persist(); render();
@@ -3066,8 +3066,8 @@ function renderMenu() {
   $('#voice').textContent = 'Sesli diyalog: ' + (save.voice ? 'açık' : 'kapalı');
 }
 document.querySelectorAll('.hero').forEach(b => b.onclick = () => { save.hero = b.dataset.hero; applySuit(); renderMenu(); persist(); });
-const GAME_VER = 'Sürüm 16 · 16 Ekim'; $('#verTag').textContent = GAME_VER;
-$('#play').onclick = () => { audioInit(); Talk.unlock(); Music.resume(); closeMenu(); if (save.ver !== GAME_VER) { const first = !save.ver; save.ver = GAME_VER; persist(); if (!first) setTimeout(() => toast('OYUN GÜNCELLENDİ', GAME_VER + ' · daha küçük arayüz, akıcı sallanma'), 1500); } };
+const GAME_VER = 'Sürüm 17 · 16 Ekim'; $('#verTag').textContent = GAME_VER;
+$('#play').onclick = () => { if (!save.cash2500) { save.cash2500 = 1; save.money = Math.max(save.money || 0, 2500); persist(); } audioInit(); Talk.unlock(); Music.resume(); closeMenu(); if (save.ver !== GAME_VER) { const first = !save.ver; save.ver = GAME_VER; persist(); if (!first) setTimeout(() => toast('OYUN GÜNCELLENDİ', GAME_VER + ' · sesler geri geldi, tek adımda sinema, ₺2500 başlangıç'), 1500); } };
 $('#voice').onclick = () => { save.voice = !save.voice; if (!save.voice) Talk.stop(); persist(); renderMenu(); };
 $('#uiScale').value = save.uiScale; $('#uiV').textContent = Math.round(save.uiScale * 100) + '%'; $('#uiScale').onchange = e => { save.uiScale = +e.target.value; persist(); applyUiScale(); }; $('#uiScale').oninput = e => { $('#uiV').textContent = Math.round(+e.target.value * 100) + '%'; };
 $('#sens').value = save.sens || 1.3; $('#sensV').textContent = '×' + (+(save.sens || 1.3)).toFixed(1); $('#sens').oninput = e => { save.sens = +e.target.value; $('#sensV').textContent = '×' + save.sens.toFixed(1); persist(); };
@@ -3075,7 +3075,7 @@ $('#mute').onclick = () => { save.muted = !save.muted; if (sfxGain) sfxGain.gain
 let resetArm = false, resetDone = false;
 $('#reset').onclick = () => {
   if (!resetArm) { resetArm = true; $('#reset').textContent = 'Emin misin? Tekrar dokun'; setTimeout(() => { resetArm = false; $('#reset').textContent = 'Kaydı sıfırla'; }, 3000); return; }
-  Object.assign(save, { xp: 0, level: 1, bags: [], crimes: 0, bosses: 0, best: 0, pos: null, hp: null, focus: 0, money: 250, carry: 0, delivered: 0, school: { lessons: 0, skipped: 0, locker: false } });
+  Object.assign(save, { xp: 0, level: 1, bags: [], crimes: 0, bosses: 0, best: 0, pos: null, hp: null, focus: 0, money: 2500, carry: 0, delivered: 0, school: { lessons: 0, skipped: 0, locker: false } });
   bags.forEach(b => { b.got = false; b.g.visible = true; }); P.maxHp = maxHpFor(1); P.hp = P.maxHp; resetArm = false; resetDone = true; persist(); renderMenu();
 };
 $('#pauseBtn').onclick = () => openMenu();
@@ -5355,10 +5355,7 @@ defInt('cinema', {
     blockRect(-6.5, 6.5, -3.8, 5.6);
     // seats are reached from the side aisles: pick a row, you sit in its nearest free seat
     for (let r = 0; r < 6; r++) for (const sd of [-1, 1]) { const z = -3 + r * 1.6, y = r * 0.3;
-      BT.spots.push({ x: sd * 7.1, z, r: 0.75, label: () => 'OTUR · ' + (r + 1) + '. SIRA · ' + (FILMS[I.film] || FILMS.ag).name, act: () => {
-        const free = []; for (let q = 0; q < 10; q++) if ((r + q) % 3 !== 0) free.push(-5.4 + q * 1.2); free.sort((a, b) => Math.abs(a - sd * 7) - Math.abs(b - sd * 7));
-        const x = free[0]; sitAt(x, z + 0.05, Math.PI, () => { const F = FILMS[I.film] || FILMS.ag, fk = FILMS[I.film] ? I.film : 'ag'; openPanel('SALON 1', `<p class="note">Koltuğuna yerleştin. Işıklar kararıyor... 🍿</p><p class="quizq">🎬 ${F.name}</p><p class="note">${F.tag} · ${F.dur}</p><div class="quizo"><button class="ghost qa" id="filmGo">▶ FİLMİ BAŞLAT</button></div>`); $('#filmGo').onclick = () => { $('#pcPanel').hidden = true; mode = 'home'; openFilm(done => { if (done) { save.films = save.films || {}; const first = !save.films[fk]; save.films[fk] = 1; if (first) gainXp(30); persist(); toast('FİLM BİTTİ', pick(['Salon ayakta alkışladı!', 'Çok güzeldi, tekrar izlerim!', 'Devam filmi ne zaman?!']) + (first ? ' · +30 XP' : '')); } else toast('FİLMDEN ÇIKTIN', 'Tekrar izlemek için koltuğa otur.'); }, fk); }; });
-        P.sitting.pos.y = y + 0.05; P.pos.y = y + 0.05; P.sitting.stand = () => { P.sitting = null; P.pos.set(sd * 7.1, 0, z); }; } }); }
+      BT.spots.push({ x: sd * 7.1, z, r: 0.75, label: () => 'OTUR VE İZLE · ' + (FILMS[I.film] || FILMS.ag).name, act: () => cinemaSit(I, r, sd) }); }
     for (const x of [-7.6, 7.6]) for (let z = -6; z <= 6; z += 4) K.glow(0.1, 0.2, 0.2, x, 2, z, 0xff8a40, 1.4);
     BT.spots.push({ x: 6.5, z: 8.3, r: 1.0, label: 'SALONDAN ÇIK', act: () => { const R = I.ret || ['mall_top', [-6, 13.6, 0, Math.PI]]; I.ret = null; switchInt(R[0], R[1]); } });
     BT.scene.add(new THREE.HemisphereLight(0x8a7a9a, 0x1a1014, 0.25)); I.ud.scrLight = new THREE.PointLight(0xaabbff, 0.8, 18, 1.6); I.ud.scrLight.position.set(0, 3.5, -6); BT.scene.add(I.ud.scrLight);
@@ -6102,9 +6099,15 @@ openFilm = function (onDone, id = 'ag') {
   openMini('runner', (b, done) => { onDone && onDone(done); });
   const cv = $('#mgCv'); cv.width = 948; cv.height = 400; $('#mg').className = 'film'; MG.film = { t: 0, F }; MG.filmDone = false; MG.g = cv.getContext('2d');
 };
+function cinemaSit(I, r, sd) {
+  const z = -3 + r * 1.6, y = r * 0.3, free = []; for (let q = 0; q < 10; q++) if ((r + q) % 3 !== 0) free.push(-5.4 + q * 1.2); free.sort((a, b) => Math.abs(a - sd * 7) - Math.abs(b - sd * 7));
+  const fk = FILMS[I.film] ? I.film : 'ag';
+  sitAt(free[0], z + 0.05, Math.PI, () => setTimeout(() => { if (!P.sitting || MG.on) return; openFilm(done => { if (done) { save.films = save.films || {}; const first = !save.films[fk]; save.films[fk] = 1; if (first) gainXp(30); persist(); toast('FİLM BİTTİ', pick(['Salon ayakta alkışladı!', 'Çok güzeldi, tekrar izlerim!', 'Devam filmi ne zaman?!']) + (first ? ' · +30 XP' : '')); } else toast('FİLMDEN ÇIKTIN', 'Tekrar izlemek için koltuk sırasına gel.'); }, fk); }, 500));
+  P.sitting.pos.y = y + 0.05; P.pos.y = y + 0.05; P.sitting.stand = () => { P.sitting = null; P.pos.set(sd * 7.1, 0, z); };
+}
 function cinemaTicket(retKey, retSp) {
-  openPanel('SİNEMA PARK · GİŞE', `<p class="note">Bugün vizyonda. Bilet ₺60 · Mısır hediye 🍿</p><div class="quizo">${Object.entries(FILMS).map(([k, F]) => `<button class="ghost qa tk" data-k="${k}">🎬 ${F.name}<br><small style="opacity:.7">${F.tag} · ${F.dur}</small></button>`).join('')}</div>`);
-  for (const b of document.querySelectorAll('.tk')) b.onclick = () => { const k = b.dataset.k; $('#pcPanel').hidden = true; mode = inHome ? 'home' : 'play'; setHud(true); buy(60, 'Sinema bileti', () => { INT.cinema.film = k; INT.cinema.ret = [retKey, retSp]; switchInt('cinema', null); toast('SALON 1', FILMS[k].name + ' · Bir koltuğa otur, film başlasın'); }); };
+  openPanel('SİNEMA PARK · GİŞE', `<p class="note">Bugün vizyonda. Bilet ₺40 · Mısır hediye 🍿 · Seç, salona gir, film hemen başlar</p><div class="quizo">${Object.entries(FILMS).map(([k, F]) => `<button class="ghost qa tk" data-k="${k}">🎬 ${F.name}<br><small style="opacity:.7">${F.tag} · ${F.dur}</small></button>`).join('')}</div>`);
+  for (const b of document.querySelectorAll('.tk')) b.onclick = () => { const k = b.dataset.k; $('#pcPanel').hidden = true; mode = inHome ? 'home' : 'play'; setHud(true); buy(40, 'Sinema bileti', () => { INT.cinema.film = k; INT.cinema.ret = [retKey, retSp]; switchInt('cinema', null); toast('SALON 1', FILMS[k].name + ' başlıyor 🍿'); setTimeout(() => { if (curInt === INT.cinema && !P.sitting) cinemaSit(INT.cinema, 2, 1); }, 1400); }); };
 }
 
 /* ================= richer street talk: greetings that notice you, news, directions, opinions ================= */
