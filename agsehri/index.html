@@ -293,6 +293,7 @@ body.menu .hud,body.menu .topbtn{visibility:hidden}
       <p><b>Görevler:</b> Kırmızı sütun suç (2 dalga). Her 5 suçtan sonra mor sütunda boss. Yeşil sütun ağ yarışı. Çatılarda 25 altın çanta saklı. Yeşil küreler can verir.</p>
       <p><b>Klavye:</b> WASD, Boşluk, Shift, F, E, Q, R, M müzik, fare ile kamera, Esc duraklat.</p>
     </details>
+    <section><h2>Ekran / arayüz boyutu <span id="uiV"></span></h2><input type="range" id="uiScale" min="0.6" max="1" step="0.05" aria-label="Arayüz boyutu"></section>
     <section><h2>Kamera hassasiyeti <span id="sensV"></span></h2><input type="range" id="sens" min="0.4" max="2.5" step="0.1" aria-label="Kamera hassasiyeti"></section>
     <div class="row">
       <button class="ghost" id="mute">Efektler: açık</button>
@@ -1253,9 +1254,19 @@ function setTime(key) {
   if (roadMat) { roadMat.roughness = key === 'night' ? 0.32 : key === 'dusk' ? 0.6 : 0.88; roadMat.metalness = key === 'night' ? 0.35 : 0.05; }
   if (envRT) envRT.dispose(); envRT = pmrem.fromScene(envScene, 0, 0.1, 1000); scene.environment = envRT.texture;
 }
+if (save.uiScale === undefined) save.uiScale = IS_TOUCH ? 0.8 : 1;
+// only the installed/standalone page controls its own viewport (inside an iframe the meta tag is ignored)
+const UI_TOP = (() => { try { return window.self === window.top; } catch (e) { return false; } })();
+const uiK = () => IS_TOUCH && UI_TOP ? clamp(+save.uiScale || 1, 0.6, 1) : 1;
+function applyUiScale() {
+  if (!UI_TOP) return; const sc = uiK(); let m = document.querySelector('meta[name=viewport]');
+  if (!m) { m = document.createElement('meta'); m.name = 'viewport'; document.head.append(m); }
+  m.content = `width=device-width,initial-scale=${sc},minimum-scale=${sc},maximum-scale=${sc},user-scalable=no,viewport-fit=cover`;
+  setTimeout(() => { resize(); if (renderer) applyQuality(); }, 120);
+}
 function applyQuality() {
   const q = QUAL[save.quality] || QUAL.mid;
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, q.pr));
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, q.pr) * uiK());
   renderer.shadowMap.enabled = !!q.shadow; sun.castShadow = !!q.shadow;
   if (q.shadow && sun.shadow.mapSize.x !== q.shadow) { sun.shadow.mapSize.set(q.shadow, q.shadow); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
   scene.traverse(o => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.needsUpdate = true); });
@@ -2307,6 +2318,7 @@ function startSwing() {
   sfx.thwip();
 }
 function releaseSwing(boost) {
+  P.relT = performance.now();
   P.state = 'air'; webRope.hide();
   const h = Math.hypot(P.vel.x, P.vel.z) || 1;
   const perfect = P.vel.y > 2 && P.pos.y > P.anchor.y - P.rope * 0.72;
@@ -2568,8 +2580,11 @@ function updatePlayer(dt) {
   if (P.state !== 'wall') {
     const hit = collide(P.pos, 0.45);
     if (hit && P.state !== 'down' && hit.b.kind === 'bld') {
-      const into = isTony() || P.civ ? false : P.state === 'ground' ? (mag > 0.5 && dx * hit.nx + dz * hit.nz < -0.55) : true;
-      if (into && !P.lunge) { P.state = 'wall'; P.wall = hit.b; P.wn.set(hit.nx, hit.nz); P.vel.set(0, 0, 0); webRope.hide(); P.trick = null; P.atk = null; sfx.stick(); burst(P.pos.x - hit.nx * 0.4, P.pos.y + 1, P.pos.z - hit.nz * 0.4, 0xb0aaa0, 10, 3, 0.5); }
+      // swinging/gliding/flying fast slides along walls instead of sticking; you stick when you're slow or steer into the wall on purpose
+      const steer = mag > 0.5 && dx * hit.nx + dz * hit.nz < -0.55, hsp = Math.hypot(P.vel.x, P.vel.z), recent = performance.now() - (P.relT || 0) < 700;
+      const into = isTony() || P.civ ? false : P.state === 'ground' ? steer : P.state === 'swing' || P.state === 'glide' ? false : recent ? false : hsp < 13 || steer;
+      if (!into && P.state !== 'ground' && !isTony() && !P.civ) { const vn = P.vel.x * hit.nx + P.vel.z * hit.nz; if (vn < 0) { P.vel.x -= vn * hit.nx * 1.15; P.vel.z -= vn * hit.nz * 1.15; } P.pos.x += hit.nx * 0.05; P.pos.z += hit.nz * 0.05; }
+      else if (into && !P.lunge) { P.state = 'wall'; P.wall = hit.b; P.wn.set(hit.nx, hit.nz); P.vel.set(0, 0, 0); webRope.hide(); P.trick = null; P.atk = null; sfx.stick(); burst(P.pos.x - hit.nx * 0.4, P.pos.y + 1, P.pos.z - hit.nz * 0.4, 0xb0aaa0, 10, 3, 0.5); }
       else { if (hit.nx) P.vel.x = 0; if (hit.nz) P.vel.z = 0; }
     }
   }
@@ -3051,9 +3066,10 @@ function renderMenu() {
   $('#voice').textContent = 'Sesli diyalog: ' + (save.voice ? 'açık' : 'kapalı');
 }
 document.querySelectorAll('.hero').forEach(b => b.onclick = () => { save.hero = b.dataset.hero; applySuit(); renderMenu(); persist(); });
-const GAME_VER = 'Sürüm 15 · 16 Ekim'; $('#verTag').textContent = GAME_VER;
-$('#play').onclick = () => { audioInit(); Talk.unlock(); Music.resume(); closeMenu(); if (save.ver !== GAME_VER) { const first = !save.ver; save.ver = GAME_VER; persist(); if (!first) setTimeout(() => toast('OYUN GÜNCELLENDİ', GAME_VER + ' · kitap rafları, çizgi romanlar, aramalar, sinema'), 1500); } };
+const GAME_VER = 'Sürüm 16 · 16 Ekim'; $('#verTag').textContent = GAME_VER;
+$('#play').onclick = () => { audioInit(); Talk.unlock(); Music.resume(); closeMenu(); if (save.ver !== GAME_VER) { const first = !save.ver; save.ver = GAME_VER; persist(); if (!first) setTimeout(() => toast('OYUN GÜNCELLENDİ', GAME_VER + ' · daha küçük arayüz, akıcı sallanma'), 1500); } };
 $('#voice').onclick = () => { save.voice = !save.voice; if (!save.voice) Talk.stop(); persist(); renderMenu(); };
+$('#uiScale').value = save.uiScale; $('#uiV').textContent = Math.round(save.uiScale * 100) + '%'; $('#uiScale').onchange = e => { save.uiScale = +e.target.value; persist(); applyUiScale(); }; $('#uiScale').oninput = e => { $('#uiV').textContent = Math.round(+e.target.value * 100) + '%'; };
 $('#sens').value = save.sens || 1.3; $('#sensV').textContent = '×' + (+(save.sens || 1.3)).toFixed(1); $('#sens').oninput = e => { save.sens = +e.target.value; $('#sensV').textContent = '×' + save.sens.toFixed(1); persist(); };
 $('#mute').onclick = () => { save.muted = !save.muted; if (sfxGain) sfxGain.gain.value = save.muted ? 0 : 0.55; persist(); renderMenu(); };
 let resetArm = false, resetDone = false;
@@ -6392,7 +6408,7 @@ registerDoors(); registerStreetDoors(); buildEntrances(); streetPeople(); initLi
 P.maxHp = maxHpFor(save.level); P.hp = P.maxHp;
 P.pos.copy(LANDMARK_C);
 document.body.classList.add('menu');
-applyQuality(); setTime(save.time); applySuit(); renderMenu(); resize();
+applyUiScale(); applyQuality(); setTime(save.time); applySuit(); renderMenu(); resize();
 Music.load();
 for (let k = 0; k < 3; k++) addCrime(false);
 Cloud.init(d => {
