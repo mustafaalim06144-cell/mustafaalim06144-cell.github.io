@@ -1,5 +1,5 @@
 // Service worker for Ağ Şehri: precaches the game so it runs with no connection.
-const CACHE = 'ag-sehri-7c2ba1013a';
+const CACHE = 'ag-sehri-03661cc0ec';
 const FILES = [
   './',
   'index.html',
