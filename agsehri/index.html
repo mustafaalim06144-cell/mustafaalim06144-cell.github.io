@@ -199,6 +199,14 @@ button:focus-visible,.chip:focus-visible,.hero:focus-visible,a:focus-visible{out
 @media (orientation:landscape){#rotate{display:none}}
 @media (max-height:430px){#btns{transform:scale(.86);transform-origin:bottom right}#mini{width:104px;height:104px}}
 body.menu .hud,body.menu .topbtn{visibility:hidden}
+:root{--uz:1}
+#vitals{transform:scale(var(--uz));transform-origin:top left}
+#mapWrap{transform:scale(var(--uz));transform-origin:top right}
+#call{transform:scale(var(--uz));transform-origin:top left}
+.topbtn{transform:scale(var(--uz));transform-origin:top center}
+#btns{transform:scale(var(--uz));transform-origin:bottom right}
+@media (max-height:430px){#btns{transform:scale(calc(.86 * var(--uz)))}}
+#actBtn{transform:translateX(-50%) scale(var(--uz));transform-origin:bottom center}
 @media (prefers-reduced-motion:reduce){#toast,.bar i{transition:none}}
 </style>
 
@@ -288,7 +296,8 @@ body.menu .hud,body.menu .topbtn{visibility:hidden}
       <p><b>Ev:</b> İki odalı dairede buzdolabını aç, kanepeye oturup haber izle, yatakta uyu, mankenden kostüm giy, atölyede seviye puanlarınla geliştirme al, bilgisayarda görevlerine bak, plak çalardan müzik seç.</p>
       <p><b>Oyunlar ve sinema:</b> Atari salonundaki 4 makinede gerçek oyunlar var (Ağ Koşusu, Uzay Ağı, Blok Kır, Ağ Yılanı); evde kanepede ve Oyun Dünyası'nda konsolla oynayabilirsin. Yumruk makinesinde ibre yeşildeyken vur. AVM'deki SİNEMA PARK gişesinden ya da üst kattaki gişeden bilet al, iki filmden birini seç (Ağ Adam 3, Uzay Kedileri), salonda boş bir koltuğa otur: film tam ekran oynar. Kitaplar sayfa sayfa okunur (kaydırarak çevir), kaldığın sayfa hatırlanır.</p>
       <p><b>Girişler:</b> Girilebilen her binanın kapısında tente ve sarı GİRİŞ tabelası var. Daily Bugle'da Şef Editöre suç fotoğraflarını satabilirsin.</p>
-      <p><b>Telefon ve radyo:</b> Arada sırada arkadaşların arar, ipucu verir. Oyun müziği Kapalı iken (Spotify dinlerken) aramalar sadece yazıyla gelir, böylece Spotify durmaz. Müzik panelinden Bugle Radyo'yu açabilirsin. Sesli diyalog menüden kapatılabilir.</p>
+      <p><b>Ses:</b> Oyunun sesi gelmiyorsa menüde "Spotify ile birlikte" kapalı olmalı. Spotify dinlerken açarsan oyun sesleri Spotify'ın üstüne karışır ama telefon sessiz moddaysa oyun sesi çıkmaz.</p>
+      <p><b>Telefon ve radyo:</b> Arada sırada arkadaşların arar, ipucu verir. Menüde "Spotify ile birlikte" açıkken aramalar sadece yazıyla gelir, böylece Spotify durmaz. Müzik panelinden Bugle Radyo'yu açabilirsin. Sesli diyalog menüden kapatılabilir.</p>
       <p><b>Kalkanlı iri düşman:</b> Önden yumrukları bloklar. Önce AĞ at, havadan vur ya da GÜÇ kullan.</p>
       <p><b>Görevler:</b> Kırmızı sütun suç (2 dalga). Her 5 suçtan sonra mor sütunda boss. Yeşil sütun ağ yarışı. Çatılarda 25 altın çanta saklı. Yeşil küreler can verir.</p>
       <p><b>Klavye:</b> WASD, Boşluk, Shift, F, E, Q, R, M müzik, fare ile kamera, Esc duraklat.</p>
@@ -298,6 +307,7 @@ body.menu .hud,body.menu .topbtn{visibility:hidden}
     <div class="row">
       <button class="ghost" id="mute">Efektler: açık</button>
       <button class="ghost" id="voice">Sesli diyalog: açık</button>
+      <button class="ghost" id="mixA">Spotify ile birlikte: kapalı</button>
       <button class="ghost" id="reset">Kaydı sıfırla</button>
     </div>
   </div>
@@ -1255,19 +1265,15 @@ function setTime(key) {
   if (roadMat) { roadMat.roughness = key === 'night' ? 0.32 : key === 'dusk' ? 0.6 : 0.88; roadMat.metalness = key === 'night' ? 0.35 : 0.05; }
   if (envRT) envRT.dispose(); envRT = pmrem.fromScene(envScene, 0, 0.1, 1000); scene.environment = envRT.texture;
 }
-if (save.uiScale === undefined) save.uiScale = IS_TOUCH ? 0.8 : 1;
-// only the installed/standalone page controls its own viewport (inside an iframe the meta tag is ignored)
-const UI_TOP = (() => { try { return window.self === window.top; } catch (e) { return false; } })();
-const uiK = () => IS_TOUCH && UI_TOP ? clamp(+save.uiScale || 1, 0.6, 1) : 1;
-function applyUiScale() {
-  if (!UI_TOP) return; const sc = uiK(); let m = document.querySelector('meta[name=viewport]');
-  if (!m) { m = document.createElement('meta'); m.name = 'viewport'; document.head.append(m); }
-  m.content = `width=device-width,initial-scale=${sc},minimum-scale=${sc},maximum-scale=${sc},user-scalable=no,viewport-fit=cover`;
-  setTimeout(() => { resize(); if (renderer) applyQuality(); }, 120);
-}
+if (save.uiScale === undefined || save.uiFix !== 1) { save.uiFix = 1; save.uiScale = IS_TOUCH ? 0.85 : 1; }
+if (save.mixAudio === undefined) save.mixAudio = false;
+if (!save.musicFix) { save.musicFix = 1; if (save.music === 'off') save.music = 'b0'; }
+// smaller HUD by scaling the HUD boxes themselves (changing the page viewport broke fixed elements like the map on iPhone)
+const uiK = () => clamp(+save.uiScale || 1, 0.6, 1);
+function applyUiScale() { document.documentElement.style.setProperty('--uz', uiK()); }
 function applyQuality() {
   const q = QUAL[save.quality] || QUAL.mid;
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, q.pr) * uiK());
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, q.pr));
   renderer.shadowMap.enabled = !!q.shadow; sun.castShadow = !!q.shadow;
   if (q.shadow && sun.shadow.mapSize.x !== q.shadow) { sun.shadow.mapSize.set(q.shadow, q.shadow); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
   scene.traverse(o => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.needsUpdate = true); });
@@ -1668,6 +1674,13 @@ function drawSpeed(sp) {
 
 /* ================= audio ================= */
 let AC = null, sfxGain = null, windGain = null, jetGain = null;
+let silentEl = null;
+function keepAlive() { // older iOS: a silent looping <audio> puts the page in the playback category
+  if (silentEl) { if (silentEl.paused) silentEl.play().catch(() => {}); return; }
+  const n = 8000, buf = new ArrayBuffer(44 + n), v = new DataView(buf), w = (o, t) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  w(0, 'RIFF'); v.setUint32(4, 36 + n, true); w(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, 'data'); v.setUint32(40, n, true); for (let i = 0; i < n; i++) v.setUint8(44 + i, 128);
+  silentEl = new Audio(URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }))); silentEl.loop = true; silentEl.setAttribute('playsinline', ''); silentEl.play().catch(() => {});
+}
 function audioInit() {
   if (!AC) {
     try {
@@ -1683,6 +1696,8 @@ function audioInit() {
     } catch (e) { AC = null; }
   }
   if (AC && AC.state !== 'running') { try { AC.resume(); } catch (e) {} }
+  // iPhone: 'playback' keeps game sounds on even with the silent switch; 'ambient' mixes with Spotify but the silent switch mutes it
+  try { if (navigator.audioSession) navigator.audioSession.type = save.mixAudio ? 'ambient' : 'playback'; else if (!save.mixAudio) keepAlive(); } catch (e) {}
   // with in-game music off the player may be listening to Spotify: mix with it instead of interrupting it
 }
 function noise(dur, type, freq, vol, q = 1, dest, t0) {
@@ -1797,7 +1812,7 @@ const Music = (() => {
   }
   function stopAll() { cur = null; if (timer) { clearInterval(timer); timer = null; } if (el) el.pause(); }
   function setSession(t) { try { if (navigator.audioSession) navigator.audioSession.type = t; } catch (e) {} }
-  function playBuilt(id) { if (!ensure()) return; stopAll(); cur = TR.find(t => t.id === id) || TR[0]; step = 0; next = AC.currentTime + 0.1; timer = setInterval(tick, 25); current = cur.id; setSession('playback'); }
+  function playBuilt(id) { if (!ensure()) return; stopAll(); cur = TR.find(t => t.id === id) || TR[0]; step = 0; next = AC.currentTime + 0.1; timer = setInterval(tick, 25); current = cur.id; setSession(save.mixAudio ? 'ambient' : 'playback'); }
   function startEl() { const u = userList[userIdx]; if (!u) return; if (el._url) URL.revokeObjectURL(el._url); el._url = URL.createObjectURL(u.blob); el.src = el._url; if (!elSrc) el.volume = save.vol; el.play().catch(() => {}); current = 'u:' + u.id; save.music = current; persist(); render(); }
   function playUser(id) {
     if (!ensure()) return; const i = userList.findIndex(u => u.id === id); if (i < 0) return; stopAll(); userIdx = i;
@@ -1806,12 +1821,12 @@ const Music = (() => {
       el.addEventListener('ended', () => { if (current.startsWith('u:') && userList.length) { userIdx = (userIdx + 1) % userList.length; startEl(); } });
       try { elSrc = AC.createMediaElementSource(el); elSrc.connect(gain); } catch (e) { elSrc = null; }
     }
-    startEl(); setSession('playback');
+    startEl(); setSession(save.mixAudio ? 'ambient' : 'playback');
   }
   function select(id) {
     Radio.on = false;
     if (id === 'radio') { playBuilt('b1'); current = 'radio'; Radio.on = true; Radio.t = 3; }
-    else if (id === 'off') { stopAll(); current = 'off'; setSession('auto'); }
+    else if (id === 'off') { stopAll(); current = 'off'; setSession(save.mixAudio ? 'ambient' : 'playback'); }
     else if (id.startsWith('u:')) playUser(id.slice(2));
     else playBuilt(id);
     save.music = current; persist(); render();
@@ -1856,7 +1871,7 @@ const Music = (() => {
 let sfxDuck = 1;
 function duckAll(on) { Music.setDuck(on); sfxDuck = on ? 0.35 : 1; if (sfxGain && AC) sfxGain.gain.setTargetAtTime(save.muted ? 0 : 0.55 * sfxDuck, AC.currentTime, 0.25); }
 // speech synthesis takes over the iPhone audio session and stops Spotify for good, so stay silent (subtitles only) when the game's own music is off
-const extMusic = () => !save.music || save.music === 'off';
+const extMusic = () => !!save.mixAudio;
 const Talk = (() => {
   const synth = window.speechSynthesis; let voice = null;
   const pickVoice = () => { try { voice = synth.getVoices().find(v => /^tr/i.test(v.lang)) || null; } catch (e) {} };
@@ -3064,10 +3079,12 @@ function renderMenu() {
   $('#saveInfo').innerHTML = (hasProg ? `Kayıtlı oyun: Seviye ${save.level} · ${save.crimes} suç · ${save.bags.length}/25 çanta. ` : '') + (Cloud.on ? '<b>Otomatik kayıt açık, hesabına kaydediliyor.</b>' : '<b>Otomatik kayıt açık.</b>');
   $('#mute').textContent = 'Efektler: ' + (save.muted ? 'kapalı' : 'açık');
   $('#voice').textContent = 'Sesli diyalog: ' + (save.voice ? 'açık' : 'kapalı');
+  $('#mixA').textContent = 'Spotify ile birlikte: ' + (save.mixAudio ? 'açık' : 'kapalı');
 }
 document.querySelectorAll('.hero').forEach(b => b.onclick = () => { save.hero = b.dataset.hero; applySuit(); renderMenu(); persist(); });
-const GAME_VER = 'Sürüm 17 · 16 Ekim'; $('#verTag').textContent = GAME_VER;
-$('#play').onclick = () => { if (!save.cash2500) { save.cash2500 = 1; save.money = Math.max(save.money || 0, 2500); persist(); } audioInit(); Talk.unlock(); Music.resume(); closeMenu(); if (save.ver !== GAME_VER) { const first = !save.ver; save.ver = GAME_VER; persist(); if (!first) setTimeout(() => toast('OYUN GÜNCELLENDİ', GAME_VER + ' · sesler geri geldi, tek adımda sinema, ₺2500 başlangıç'), 1500); } };
+const GAME_VER = 'Sürüm 18 · 16 Ekim'; $('#verTag').textContent = GAME_VER;
+$('#play').onclick = () => { if (!save.cash2500) { save.cash2500 = 1; save.money = Math.max(save.money || 0, 2500); persist(); } audioInit(); Talk.unlock(); Music.resume(); closeMenu(); if (save.ver !== GAME_VER) { const first = !save.ver; save.ver = GAME_VER; persist(); if (!first) setTimeout(() => toast('OYUN GÜNCELLENDİ', GAME_VER + ' · sesler, harita ve sinema gişesi düzeltildi'), 1500); } };
+$('#mixA').onclick = () => { save.mixAudio = !save.mixAudio; persist(); audioInit(); renderMenu(); toast(save.mixAudio ? 'SPOTIFY MODU AÇIK' : 'OYUN SESLERİ AÇIK', save.mixAudio ? 'Oyun sesleri Spotify ile karışır; telefon sessizdeyse oyun sesi çıkmaz, aramalar yazıyla gelir.' : 'Oyun sesleri ve müzik her zaman çalar (Spotify durabilir).'); };
 $('#voice').onclick = () => { save.voice = !save.voice; if (!save.voice) Talk.stop(); persist(); renderMenu(); };
 $('#uiScale').value = save.uiScale; $('#uiV').textContent = Math.round(save.uiScale * 100) + '%'; $('#uiScale').onchange = e => { save.uiScale = +e.target.value; persist(); applyUiScale(); }; $('#uiScale').oninput = e => { $('#uiV').textContent = Math.round(+e.target.value * 100) + '%'; };
 $('#sens').value = save.sens || 1.3; $('#sensV').textContent = '×' + (+(save.sens || 1.3)).toFixed(1); $('#sens').oninput = e => { save.sens = +e.target.value; $('#sensV').textContent = '×' + save.sens.toFixed(1); persist(); };
@@ -4130,11 +4147,10 @@ function buildShop(I, K, S, x0, x1, zb, s, glass) {
       const x = x0 + 1.1 + k * 1.95; K.bx(1.3, 1.9, 0.08, x, 0.9, Z(0.06), 0x111111); hplane(1.2, 1.8, new THREE.MeshBasicMaterial({ map: pt.t, color: new THREE.Color(1.15, 1.15, 1.15) }), x, 1.85, Z(0.11), 0, face); K.glow(1.32, 0.04, 0.04, x, 2.82, Z(0.12), 0xffd34a, 2.4); });
     K.bx(3.4, 1.05, 0.7, cx - 1.2, 0, Z(3.2), 0x2a1a3a); K.bx(3.5, 0.05, 0.8, cx - 1.2, 1.05, Z(3.2), 0xffd34a); for (let q = 0; q < 2; q++) { K.bx(0.4, 0.3, 0.04, cx - 2 + q * 1.4, 1.1, Z(3.2), 0x111111); K.glow(0.36, 0.26, 0.01, cx - 2 + q * 1.4, 1.12, Z(3.2) + s * 0.025, 0x7fd8ff, 1.2); }
     blockRect(cx - 2.95, cx + 0.55, Math.min(Z(2.85), Z(3.55)), Math.max(Z(2.85), Z(3.55)));
-    BT.spots.push({ y: LY, x: cx - 1.2, z: Z(2.3), r: 1.3, label: 'GİŞE · BİLET AL · SALONA GİR', act: () => cinemaTicket(curInt.key, [P.pos.x, P.pos.z, P.facing, camYaw, P.pos.y]) });
+    BT.spots.push({ y: LY, x: cx - 1.2, z: Z(4.0), r: 1.4, label: '🎬 SİNEMA GİŞESİ · FİLM SEÇ VE İZLE', act: () => cinemaTicket(curInt.key, [P.pos.x, P.pos.z, P.facing, camYaw, P.pos.y]) });
     K.bx(0.7, 1.2, 0.6, cx + 2.6, 0, Z(3.0), 0xc0161f); K.bx(0.66, 0.6, 0.56, cx + 2.6, 1.2, Z(3.0), 0xfff4d0); for (let q = 0; q < 26; q++) K.ball(0.035, cx + 2.35 + Math.random() * 0.5, 1.22 + Math.random() * 0.3, Z(3.0) + rr(-0.22, 0.22), 0xffe08a, 6); blockRect(cx + 2.2, cx + 3.0, Math.min(Z(2.65), Z(3.35)), Math.max(Z(2.65), Z(3.35)));
     signPlane('SALON 1', 1.6, 0.4, '#14101e', '#ff4a4a', x1 - 1.3, 2.5, Z(0.12), face, 2);
     K.bx(1.4, 2.3, 0.08, x1 - 1.3, 0, Z(0.08), 0x3a0a14);
-    BT.spots.push({ y: LY, x: cx - 1.2, z: Z(4.0), r: 1.3, label: 'FİLM İZLE · ₺60', act: () => buy(60, 'Sinema bileti', () => fadeDo(() => { gainXp(15); persist(); toast('FİLM BİTTİ', pick(['Ağ Adam 3 harikaydı!', 'Demir Kalp\'in sonu çok iyiydi.', 'Uzay Kedileri... ilginç.']) + ' · +15 XP'); })) });
   } else if (T === 'game') {
     shelfUnit(K, x0 + 0.3, x1 - 0.3, zb + s * 0.05, s, 2.2, 5, 0x1a1a1a, (y, z) => { for (let x = x0 + 0.45; x < x1 - 0.45; x += 0.16) K.bx(0.13, 0.18, 0.02, x + 0.07, y, z, pick([0x2b5be0, 0xc0161f, 0x111111, 0x3dff7a, 0xffd34a])); });
     for (let q = 0; q < 2; q++) { const x = cx - 1.6 + q * 3.2; K.bx(1.5, 0.9, 0.06, x, 1.0, Z(2.6), 0x111111); hplane(1.42, 0.82, adScreens[q].mat, x, 1.45, Z(2.6) + s * 0.04, 0, face); K.bx(0.6, 0.8, 0.5, x, 0, Z(2.6), 0x1a1a1a); K.bx(0.3, 0.06, 0.15, x, 0.8, Z(2.6) + s * 0.2, 0xf2f2f2); K.bx(0.55, 0.5, 0.55, x, 0, Z(3.7), 0xc0161f); K.bx(0.55, 0.7, 0.12, x, 0.5, Z(3.7) + s * 0.25, 0x111111); blockRect(x - 0.4, x + 0.4, Math.min(Z(2.3), Z(2.9)), Math.max(Z(2.3), Z(2.9))); }
