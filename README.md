@@ -15,3 +15,9 @@ Kaynak kodu özel `anthropic-claude-code` deposundaki `oyun/` klasöründedir (`
 İnternetsiz 3D süper kahraman oyunu (yatay ekran): https://mustafaalim06144-cell.github.io/agsehri/
 
 Kaynak kodu özel `anthropic-claude-code` deposundaki `ag-sehri/` klasöründedir (`python3 ag-sehri/build_pwa.py` ile `docs/` üretilir, bu klasöre kopyalanır).
+
+# Deneyap
+
+https://dys.deneyap.org/ adresini doğrudan açan uygulama: https://mustafaalim06144-cell.github.io/deneyap/
+
+Kaynak kodu özel `anthropic-claude-code` deposundaki `deneyap/` klasöründedir.

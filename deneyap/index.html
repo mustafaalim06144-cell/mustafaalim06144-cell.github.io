@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Deneyap</title>
+<meta name="description" content="dys.deneyap.org adresini tek dokunuşla açar.">
+<meta name="theme-color" content="#0b3d91">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Deneyap">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<style>
+/* Launcher: online → straight to DYS; offline → this saved screen waits and opens it when the connection returns. */
+:root { --bg: #0b3d91; --text: #ffffff; --muted: #c9d6f2; --btn: #ffffff; --btn-text: #0b3d91; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; padding: 16px; display: grid; place-items: center; background: var(--bg); color: var(--text);
+  font: 16px -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; text-align: center; }
+main { width: 100%; max-width: 380px; }
+img { width: 96px; height: 96px; border-radius: 22px; }
+h1 { font-size: 26px; margin: 16px 0 8px; }
+p { color: var(--muted); margin: 0 0 24px; line-height: 1.5; }
+a.btn { display: block; padding: 16px; border-radius: 14px; background: var(--btn); color: var(--btn-text); font-weight: 700; font-size: 18px; text-decoration: none; }
+[hidden] { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <img src="icon-192.png" alt="">
+  <h1>Deneyap</h1>
+  <p id="msg">Açılıyor…</p>
+  <a class="btn" id="go" href="https://dys.deneyap.org/" hidden>DYS'yi aç</a>
+</main>
+<script>
+const DYS = "https://dys.deneyap.org/";
+const msg = document.getElementById("msg");
+const go = document.getElementById("go");
+
+function openDys() {
+  msg.textContent = "Açılıyor…";
+  location.replace(DYS);
+}
+
+function waitForNet() {
+  msg.textContent = "İnternet yok. DYS çevrimiçi bir sistem; bağlantı gelince kendiliğinden açılacak.";
+  go.hidden = false;
+}
+
+// First visit: give the service worker up to 2 s to save this screen before leaving, so it works offline later.
+const saved = "serviceWorker" in navigator && !navigator.serviceWorker.controller
+  ? Promise.race([navigator.serviceWorker.register("sw.js").then(() => navigator.serviceWorker.ready), new Promise(r => setTimeout(r, 2000))]).catch(() => {})
+  : Promise.resolve();
+addEventListener("online", openDys);
+// Coming back with the back button: show the button instead of bouncing again.
+addEventListener("pageshow", e => { if (e.persisted) { msg.textContent = ""; go.hidden = false; } });
+saved.then(() => navigator.onLine ? openDys() : waitForNet());
+</script>
+</body>
+</html>
