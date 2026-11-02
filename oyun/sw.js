@@ -1,5 +1,5 @@
 // İlk ziyaretten sonra oyunun internetsiz açılmasını sağlar.
-const CACHE = "arkadas-arenasi-14facd8454";
+const CACHE = "arkadas-arenasi-45b50834c0";
 const FILES = ["./", "./index.html", "./manifest.webmanifest", "./icon-180.png", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (event) => {
